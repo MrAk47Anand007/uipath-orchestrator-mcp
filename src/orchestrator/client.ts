@@ -1,4 +1,4 @@
-import { createTokenProvider } from './auth.js';
+import { createTokenProvider, type AccessTokenProvider } from './auth.js';
 import type { FolderSelector, OrchestratorRequestOptions } from '../types.js';
 
 function applyFolderHeaders(
@@ -17,15 +17,26 @@ function applyFolderHeaders(
   }
 }
 
-export function createOrchestratorClient(config: {
+type ServiceClientConfig = {
   baseUrl: URL;
   tokenUrl: URL;
   clientId: string;
   clientSecret: string;
   oauthScopes: string;
   defaultFolderKey?: string;
-}) {
-  const getAccessToken = createTokenProvider(config);
+};
+
+type TokenProviderClientConfig = {
+  baseUrl: URL;
+  defaultFolderKey?: string;
+  getAccessToken: AccessTokenProvider;
+};
+
+export function createOrchestratorClient(
+  config: ServiceClientConfig | TokenProviderClientConfig,
+) {
+  const getAccessToken =
+    'getAccessToken' in config ? config.getAccessToken : createTokenProvider(config);
 
   async function request<T>(
     path: string,

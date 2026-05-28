@@ -9,7 +9,17 @@ describe('folder-aware client', () => {
     const token = 'token-123';
 
     nock('https://cloud.uipath.com')
-      .post('/identity_/connect/token')
+      .post('/acme/identity_/connect/token', (body) => {
+        const params =
+          typeof body === 'string' ? new URLSearchParams(body) : new URLSearchParams(body as Record<string, string>);
+        return (
+          params.get('grant_type') === 'client_credentials' &&
+          params.get('client_id') === 'client-id' &&
+          params.get('client_secret') === 'client-secret' &&
+          params.get('scope') === 'OR.Default'
+        );
+      })
+      .matchHeader('authorization', (value) => value === undefined)
       .reply(200, { access_token: token, token_type: 'Bearer', expires_in: 3600 });
 
     const scope = nock('https://cloud.uipath.com')
@@ -20,7 +30,7 @@ describe('folder-aware client', () => {
 
     const client = createOrchestratorClient({
       baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
-      tokenUrl: new URL('https://cloud.uipath.com/identity_/connect/token'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
       clientId: 'client-id',
       clientSecret: 'client-secret',
       oauthScopes: 'OR.Default',

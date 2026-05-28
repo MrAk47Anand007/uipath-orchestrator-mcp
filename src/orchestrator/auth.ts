@@ -4,12 +4,14 @@ type TokenResponse = {
   expires_in: number;
 };
 
+export type AccessTokenProvider = () => Promise<string>;
+
 export function createTokenProvider(config: {
   tokenUrl: URL;
   clientId: string;
   clientSecret: string;
   oauthScopes: string;
-}) {
+}): AccessTokenProvider {
   let cached: { accessToken: string; expiresAt: number } | undefined;
 
   return async function getAccessToken() {
@@ -17,24 +19,23 @@ export function createTokenProvider(config: {
       return cached.accessToken;
     }
 
-    const basic = Buffer.from(
-      `${config.clientId}:${config.clientSecret}`,
-    ).toString('base64');
     const response = await fetch(config.tokenUrl, {
       method: 'POST',
       headers: {
-        authorization: `Basic ${basic}`,
         'content-type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
         grant_type: 'client_credentials',
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
         scope: config.oauthScopes,
       }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
       throw new Error(
-        `UiPath OAuth failed: ${response.status} ${response.statusText}`,
+        `UiPath OAuth failed: ${response.status} ${response.statusText} ${errorText}`,
       );
     }
 

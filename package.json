@@ -3,14 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "uipath-orchestrator-mcp": "dist/src/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
+    "serve": "tsx src/index.ts serve",
+    "login": "tsx src/index.ts login",
+    "logout": "tsx src/index.ts logout",
+    "whoami": "tsx src/index.ts whoami",
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "dotenv": "^17.2.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
