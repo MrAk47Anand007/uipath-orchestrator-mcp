@@ -14,6 +14,9 @@ export function createJobsApi(
     listJobs(query: URLSearchParams, folder?: FolderSelector) {
       return client.get(`/odata/Jobs?${query.toString()}`, folder);
     },
+    getJobById(jobId: number, folder?: FolderSelector) {
+      return client.get(`/odata/Jobs(${jobId})`, folder);
+    },
     startJob(input: {
       releaseKey: string;
       jobsCount?: number;

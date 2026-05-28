@@ -69,4 +69,38 @@ describe('jobs api', () => {
     expect(scope.isDone()).toBe(true);
     expect(result.value[0].State).toBe('Pending');
   });
+
+  it('gets a job by numeric id including output arguments', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Jobs(12325843)')
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, {
+        Id: 12325843,
+        State: 'Successful',
+        OutputArguments: '{"status":"ok"}',
+        Info: 'Completed',
+      });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Jobs',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const jobsApi = createJobsApi(client);
+    const result = (await jobsApi.getJobById(12325843, {
+      folderKey: 'folder-key-1',
+    })) as { OutputArguments: string; State: string };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.State).toBe('Successful');
+    expect(result.OutputArguments).toBe('{"status":"ok"}');
+  });
 });

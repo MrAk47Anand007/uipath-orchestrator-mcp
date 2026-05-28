@@ -1,4 +1,7 @@
 import nock from 'nock';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createOrchestratorClient } from '../src/orchestrator/client.js';
 import { createResourcesApi } from '../src/orchestrator/resources.js';
@@ -156,5 +159,225 @@ describe('resources api', () => {
 
     expect(scope.isDone()).toBe(true);
     expect(result.Uri).toContain('download.example');
+  });
+
+  it('gets a direct write uri for a bucket file', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Buckets(7651)/UiPath.Server.Configuration.OData.GetWriteUri')
+      .query({
+        path: 'sample.txt',
+        expiryInMinutes: '15',
+        contentType: 'text/plain',
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, {
+        Uri: 'https://upload.example/sample.txt',
+        Verb: 'PUT',
+        RequiresAuth: false,
+        Headers: {
+          Keys: ['x-ms-blob-type'],
+          Values: ['BlockBlob'],
+        },
+      });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Buckets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    const result = (await resourcesApi.getBucketWriteUri(
+      7651,
+      'sample.txt',
+      'text/plain',
+      15,
+      { folderKey: 'folder-key-1' },
+    )) as { Uri: string; Verb: string };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.Uri).toContain('upload.example');
+    expect(result.Verb).toBe('PUT');
+  });
+
+  it('uploads a local file to a storage bucket using the write uri', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'uipath-bucket-upload-'));
+    const localFilePath = join(tempDir, 'sample.txt');
+    await writeFile(localFilePath, 'hello from codex', 'utf8');
+
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const writeUriScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Buckets(7651)/UiPath.Server.Configuration.OData.GetWriteUri')
+      .query({
+        path: 'sample.txt',
+        expiryInMinutes: '15',
+        contentType: 'text/plain',
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, {
+        Uri: 'https://upload.example/sample.txt',
+        Verb: 'PUT',
+        RequiresAuth: false,
+        Headers: { 'x-ms-blob-type': 'BlockBlob' },
+      });
+
+    const uploadScope = nock('https://upload.example')
+      .put('/sample.txt', 'hello from codex')
+      .matchHeader('content-type', 'text/plain')
+      .matchHeader('x-ms-blob-type', 'BlockBlob')
+      .reply(201);
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Buckets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    const result = await resourcesApi.uploadBucketFile(
+      7651,
+      localFilePath,
+      { folderKey: 'folder-key-1' },
+      { contentType: 'text/plain' },
+    );
+
+    expect(writeUriScope.isDone()).toBe(true);
+    expect(uploadScope.isDone()).toBe(true);
+    expect(result).toEqual({
+      bucketId: 7651,
+      path: 'sample.txt',
+      localFilePath,
+      verb: 'PUT',
+      uploadUri: 'https://upload.example/sample.txt',
+    });
+  });
+
+  it('deletes a file from a storage bucket', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .delete('/acme/DefaultTenant/orchestrator_/odata/Buckets(7651)/UiPath.Server.Configuration.OData.DeleteFile')
+      .query({ path: 'sample.txt' })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(204);
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Buckets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    await resourcesApi.deleteBucketFile(7651, 'sample.txt', {
+      folderKey: 'folder-key-1',
+    });
+
+    expect(scope.isDone()).toBe(true);
+  });
+
+  it('creates a text asset', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .post('/acme/DefaultTenant/orchestrator_/odata/Assets', {
+        Name: 'NewTextAsset',
+        ValueScope: 'Global',
+        ValueType: 'Text',
+        StringValue: 'hello world',
+        Description: 'Created from MCP',
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(201, {
+        Id: 99,
+        Name: 'NewTextAsset',
+        ValueType: 'Text',
+        StringValue: 'hello world',
+      });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Assets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    const result = (await resourcesApi.createAsset(
+      {
+        Name: 'NewTextAsset',
+        ValueScope: 'Global',
+        ValueType: 'Text',
+        StringValue: 'hello world',
+        Description: 'Created from MCP',
+      },
+      { folderKey: 'folder-key-1' },
+    )) as { Id: number; Name: string };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.Id).toBe(99);
+    expect(result.Name).toBe('NewTextAsset');
+  });
+
+  it('updates a text asset by id', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .put('/acme/DefaultTenant/orchestrator_/odata/Assets(99)', {
+        Name: 'NewTextAsset',
+        ValueScope: 'Global',
+        ValueType: 'Text',
+        StringValue: 'updated text',
+        Description: 'Updated from MCP',
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200);
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Assets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    await resourcesApi.updateAsset(
+      99,
+      {
+        Name: 'NewTextAsset',
+        ValueScope: 'Global',
+        ValueType: 'Text',
+        StringValue: 'updated text',
+        Description: 'Updated from MCP',
+      },
+      { folderKey: 'folder-key-1' },
+    );
+
+    expect(scope.isDone()).toBe(true);
   });
 });

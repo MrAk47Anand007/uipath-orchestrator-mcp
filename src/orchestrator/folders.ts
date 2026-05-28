@@ -4,6 +4,11 @@ export function createFoldersApi(
   client: ReturnType<typeof createOrchestratorClient>,
 ) {
   return {
+    listAccessibleFolders() {
+      return client.get<{ PageItems?: unknown[]; Count?: number }>(
+        '/api/Folders/GetAllForCurrentUser?take=100&skip=0',
+      );
+    },
     listCurrentUserFolders() {
       return client.get<{ value?: unknown[]; items?: unknown[] }>(
         '/api/Folders/GetAllForCurrentUser?take=100&skip=0',

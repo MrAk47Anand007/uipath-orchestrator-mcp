@@ -71,7 +71,13 @@ export function createOrchestratorClient(
       return undefined as T;
     }
 
-    return (await response.json()) as T;
+    const text = await response.text();
+
+    if (!text.trim()) {
+      return undefined as T;
+    }
+
+    return JSON.parse(text) as T;
   }
 
   return {
@@ -79,5 +85,48 @@ export function createOrchestratorClient(
       request<T>(path, { method: 'GET', folder }),
     post: <T>(path: string, body: unknown, folder?: FolderSelector) =>
       request<T>(path, { method: 'POST', body, folder }),
+    put: <T>(path: string, body: unknown, folder?: FolderSelector) =>
+      request<T>(path, { method: 'PUT', body, folder }),
+    patch: <T>(path: string, body: unknown, folder?: FolderSelector) =>
+      request<T>(path, { method: 'PATCH', body, folder }),
+    delete: <T>(path: string, folder?: FolderSelector) =>
+      request<T>(path, { method: 'DELETE', folder }),
+    postFormData: async <T>(
+      path: string,
+      formData: FormData,
+      folder?: FolderSelector,
+    ) => {
+      const token = await getAccessToken();
+      const url = new URL(path.replace(/^\//, ''), config.baseUrl);
+      const headers = new Headers({
+        authorization: `Bearer ${token}`,
+        accept: 'application/json',
+      });
+
+      applyFolderHeaders(headers, folder, config.defaultFolderKey);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`UiPath API ${response.status} ${response.statusText}: ${text}`);
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      const text = await response.text();
+
+      if (!text.trim()) {
+        return undefined as T;
+      }
+
+      return JSON.parse(text) as T;
+    },
   };
 }

@@ -1,5 +1,9 @@
+export { registerAdminTools } from './admin.js';
 export { registerFolderTools } from './folders.js';
 export { registerJobTools } from './jobs.js';
+export { registerLogsTools } from './logs.js';
 export { registerQueueTools } from './queues.js';
 export { registerResourceTools } from './resources.js';
 export { registerRobotTools } from './robots.js';
+export { registerReleaseTools } from './releases.js';
+export { registerScheduleTools } from './schedules.js';

@@ -5,7 +5,7 @@ export type FolderSelector = {
 };
 
 export type OrchestratorRequestOptions = {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: unknown;
   folder?: FolderSelector;
 };

@@ -210,7 +210,7 @@ describe('interactive token provider', () => {
 
 describe('interactive callback listener', () => {
   it('waits for the browser callback and returns the authorization code', async () => {
-    const redirectUrl = new URL('http://127.0.0.1:8787/callback');
+    const redirectUrl = new URL('http://127.0.0.1:18787/callback');
     const callbackPromise = listenForAuthorizationCode({
       redirectUrl,
       expectedState: 'state-1',
@@ -219,7 +219,7 @@ describe('interactive callback listener', () => {
 
     await new Promise<void>((resolve, reject) => {
       const req = request(
-        'http://127.0.0.1:8787/callback?code=auth-code-1&state=state-1',
+        'http://127.0.0.1:18787/callback?code=auth-code-1&state=state-1',
         (response) => {
           response.resume();
           response.on('end', () => resolve());
@@ -234,7 +234,7 @@ describe('interactive callback listener', () => {
   });
 
   it('ignores an empty callback request until the OAuth code arrives', async () => {
-    const redirectUrl = new URL('http://127.0.0.1:8787/callback');
+    const redirectUrl = new URL('http://127.0.0.1:18788/callback');
     const callbackPromise = listenForAuthorizationCode({
       redirectUrl,
       expectedState: 'state-2',
@@ -242,7 +242,7 @@ describe('interactive callback listener', () => {
     });
 
     await new Promise<void>((resolve, reject) => {
-      const firstRequest = request('http://127.0.0.1:8787/callback', (response) => {
+      const firstRequest = request('http://127.0.0.1:18788/callback', (response) => {
         response.resume();
         response.on('end', resolve);
       });
@@ -253,7 +253,7 @@ describe('interactive callback listener', () => {
 
     await new Promise<void>((resolve, reject) => {
       const secondRequest = request(
-        'http://127.0.0.1:8787/callback?code=auth-code-2&state=state-2',
+        'http://127.0.0.1:18788/callback?code=auth-code-2&state=state-2',
         (response) => {
           response.resume();
           response.on('end', resolve);

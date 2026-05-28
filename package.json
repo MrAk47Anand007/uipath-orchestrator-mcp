@@ -9,6 +9,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
+    "init": "tsx src/index.ts init",
+    "doctor": "tsx src/index.ts doctor",
     "serve": "tsx src/index.ts serve",
     "login": "tsx src/index.ts login",
     "logout": "tsx src/index.ts logout",
