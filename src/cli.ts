@@ -24,6 +24,11 @@ import {
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { parseEnvContent, upsertEnvContent } from './setup/env-file.js';
 import {
+  readPersistedConfig,
+  resolveConfigPath,
+  writePersistedConfig,
+} from './setup/config-file.js';
+import {
   buildDoctorAdvice,
   formatDoctorReport,
   normalizeFolderList,
@@ -44,6 +49,24 @@ function createPrompt(prompt: PromptFn = async (question, defaultValue) => {
 
 function getEnvPath(envPath = '.env') {
   return resolve(process.cwd(), envPath);
+}
+
+function formatCommand(command: string) {
+  return `npx uipath-orchestrator-mcp ${command}`;
+}
+
+function mergeConfigSources(
+  persisted: Record<string, string>,
+  envFile: Record<string, string>,
+  envSource: Record<string, string | undefined> = process.env,
+) {
+  return {
+    ...persisted,
+    ...envFile,
+    ...Object.fromEntries(
+      Object.entries(envSource).filter(([, value]) => value !== undefined),
+    ),
+  } as Record<string, string>;
 }
 
 async function readEnvFile(envPath = '.env') {
@@ -227,11 +250,19 @@ export async function runInitCommand(
   dependencies: {
     prompt?: PromptFn;
     envPath?: string;
+    configPath?: string;
   } = {},
 ) {
   const prompt = createPrompt(dependencies.prompt);
   const envFile = await readEnvFile(dependencies.envPath);
-  const current = envFile.values;
+  const persistedConfig = await readPersistedConfig({
+    ...process.env,
+    UIPATH_CONFIG_PATH: dependencies.configPath,
+  });
+  const current = mergeConfigSources(
+    persistedConfig.values,
+    envFile.values,
+  );
   const baseUrl =
     (await prompt(
       'UiPath Orchestrator base URL',
@@ -300,13 +331,58 @@ export async function runInitCommand(
     UIPATH_CLIENT_SECRET: serviceClientSecret,
   });
 
-  await writeFile(envFile.path, nextContent.endsWith('\n') ? nextContent : `${nextContent}\n`, 'utf8');
+  const persistedValues: Record<string, string | undefined> = {
+    UIPATH_BASE_URL: baseUrl,
+    UIPATH_ACCOUNT_LOGICAL_NAME: accountLogicalName,
+    UIPATH_TENANT_LOGICAL_NAME: tenantLogicalName,
+    UIPATH_AUTH_MODE: authMode,
+    UIPATH_FOLDER_KEY: current.UIPATH_FOLDER_KEY,
+    UIPATH_OAUTH_SCOPES:
+      authMode === 'service'
+        ? scopes
+        : current.UIPATH_OAUTH_SCOPES ??
+          'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines',
+    UIPATH_INTERACTIVE_OAUTH_SCOPES:
+      authMode === 'interactive'
+        ? scopes
+        : current.UIPATH_INTERACTIVE_OAUTH_SCOPES,
+    UIPATH_INTERACTIVE_CLIENT_ID: interactiveClientId,
+    UIPATH_INTERACTIVE_REDIRECT_URL:
+      current.UIPATH_INTERACTIVE_REDIRECT_URL ??
+      'http://127.0.0.1:8787/callback',
+    UIPATH_CLIENT_ID: serviceClientId,
+    UIPATH_CLIENT_SECRET: serviceClientSecret,
+  };
 
-  console.log(`Saved onboarding config to ${envFile.path}.`);
+  const configPath =
+    dependencies.configPath ??
+    resolveConfigPath({
+      ...process.env,
+      UIPATH_CONFIG_PATH: dependencies.configPath,
+    });
+  await writePersistedConfig(configPath, {
+    ...persistedConfig.values,
+    ...persistedValues,
+  });
+
+  if (dependencies.envPath) {
+    await writeFile(
+      envFile.path,
+      nextContent.endsWith('\n') ? nextContent : `${nextContent}\n`,
+      'utf8',
+    );
+    console.log(`Saved local .env fallback to ${envFile.path}.`);
+  }
+
+  console.log(`Saved onboarding config to ${configPath}.`);
   if (authMode === 'interactive') {
-    console.log('Next step: run `login`, then run `doctor`.');
+    console.log(
+      `Next step: run \`${formatCommand('login')}\`, then run \`${formatCommand('doctor')}\`.`,
+    );
   } else {
-    console.log('Next step: run `doctor` to verify the service app and folder access.');
+    console.log(
+      `Next step: run \`${formatCommand('doctor')}\` to verify the service app and folder access.`,
+    );
   }
 }
 
@@ -314,11 +390,20 @@ export async function runDoctorCommand(
   dependencies: {
     prompt?: PromptFn;
     envPath?: string;
+    configPath?: string;
   } = {},
 ) {
   const prompt = createPrompt(dependencies.prompt);
   const envFile = await readEnvFile(dependencies.envPath);
-  const validation = validateDoctorEnv(envFile.values);
+  const persistedConfig = await readPersistedConfig({
+    ...process.env,
+    UIPATH_CONFIG_PATH: dependencies.configPath,
+  });
+  const current = mergeConfigSources(
+    persistedConfig.values,
+    envFile.values,
+  );
+  const validation = validateDoctorEnv(current);
   const steps: Array<{ label: string; status: 'ok' | 'warn' | 'error'; message: string }> = [];
 
   if (!validation.ok) {
@@ -334,7 +419,7 @@ export async function runDoctorCommand(
         steps,
         folders: [],
         advice: [
-          'Run `init` to generate or repair your .env file.',
+          `Run \`${formatCommand('init')}\` to generate or repair your saved configuration.`,
         ],
       }),
     );
@@ -345,9 +430,10 @@ export async function runDoctorCommand(
 
   try {
     config = loadConfig({
-      ...process.env,
-      ...envFile.values,
-    });
+      ...current,
+      UIPATH_CONFIG_PATH:
+        dependencies.configPath ?? current.UIPATH_CONFIG_PATH,
+    }, { includePersistedConfig: false });
     steps.push({
       label: 'Config',
       status: 'ok',
@@ -439,15 +525,26 @@ export async function runDoctorCommand(
       const selected = await promptForFolderSelection(folders, prompt);
 
       if (selected) {
-        const updatedContent = upsertEnvContent(envFile.content, {
+        const configPath =
+          dependencies.configPath ??
+          persistedConfig.path;
+        await writePersistedConfig(configPath, {
+          ...persistedConfig.values,
+          ...current,
           UIPATH_FOLDER_KEY: selected.key,
         });
 
-        await writeFile(
-          envFile.path,
-          updatedContent.endsWith('\n') ? updatedContent : `${updatedContent}\n`,
-          'utf8',
-        );
+        if (dependencies.envPath) {
+          const updatedContent = upsertEnvContent(envFile.content, {
+            UIPATH_FOLDER_KEY: selected.key,
+          });
+
+          await writeFile(
+            envFile.path,
+            updatedContent.endsWith('\n') ? updatedContent : `${updatedContent}\n`,
+            'utf8',
+          );
+        }
 
         steps.push({
           label: 'Folder selection',
@@ -455,12 +552,12 @@ export async function runDoctorCommand(
           message: `Saved ${selected.fullyQualifiedName} as the default folder.`,
         });
 
-        envFile.values.UIPATH_FOLDER_KEY = selected.key;
+        current.UIPATH_FOLDER_KEY = selected.key;
       }
     }
   }
 
-  const folderKey = envFile.values.UIPATH_FOLDER_KEY;
+  const folderKey = current.UIPATH_FOLDER_KEY;
   const advice = buildDoctorAdvice({
     folderCount: folderKeyValidated && folders.length === 0 ? 1 : folders.length,
     hasDefaultFolderKey: Boolean(folderKey) && (folderKeyValidated || folders.some((folder) => folder.key === folderKey)),

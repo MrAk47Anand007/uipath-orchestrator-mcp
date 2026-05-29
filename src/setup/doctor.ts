@@ -106,7 +106,9 @@ export function buildDoctorAdvice(input: {
 
   if (!input.authSucceeded) {
     if (input.authMode === 'interactive') {
-      advice.push('Run `login` to create or refresh your interactive UiPath session.');
+      advice.push(
+        'Run `npx uipath-orchestrator-mcp login` to create or refresh your interactive UiPath session.',
+      );
     } else {
       advice.push('Check the service app id, secret, scopes, and folder access in UiPath.');
     }
@@ -122,7 +124,7 @@ export function buildDoctorAdvice(input: {
     );
   }
 
-  advice.push('Run `serve` when you are ready.');
+  advice.push('Run `npx uipath-orchestrator-mcp serve` when you are ready.');
   return advice;
 }
 

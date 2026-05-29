@@ -169,6 +169,10 @@ Interactive login stores tokens locally on Windows by default at:
 
 - `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\auth.json`
 
+Package-first config is stored locally on Windows by default at:
+
+- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\config.json`
+
 You can override that with `UIPATH_AUTH_STORAGE_PATH`.
 
 ## Quickstart
@@ -176,25 +180,24 @@ You can override that with `UIPATH_AUTH_STORAGE_PATH`.
 For a developer or RPA engineer, this is the smoothest path:
 
 ```bash
-npm install
-npm run init
-npm run login
-npm run doctor
-npm run serve
+npx uipath-orchestrator-mcp init
+npx uipath-orchestrator-mcp login
+npx uipath-orchestrator-mcp doctor
+npx uipath-orchestrator-mcp serve
 ```
 
 What each command does:
 
-- `init` creates or updates your `.env`
+- `init` creates or updates your saved package config
 - `login` opens UiPath login in the browser for interactive auth
 - `doctor` validates auth, folder access, and config
 - `serve` starts the MCP server
 
-If you want service mode instead, skip `login`, set service credentials in `.env`, and run:
+If you want service mode instead, skip `login`, set service credentials during `init`, and run:
 
 ```bash
-npm run doctor
-npm run serve
+npx uipath-orchestrator-mcp doctor
+npx uipath-orchestrator-mcp serve
 ```
 
 ## UiPath-side setup
@@ -206,7 +209,7 @@ You still need a small amount of tenant setup before the MCP can do useful work.
 1. Create a `Confidential` external app in UiPath.
 2. Add the required application scopes.
 3. Grant the app access to the target Orchestrator folder.
-4. Put the client id, client secret, base URL, and folder key in `.env`.
+4. Save the client id, client secret, base URL, and folder key through `init`.
 
 ### For interactive mode
 
@@ -214,8 +217,8 @@ You still need a small amount of tenant setup before the MCP can do useful work.
 2. Add user scopes.
 3. Set redirect URL to `http://127.0.0.1:8787/callback`.
 4. Grant the user appropriate Orchestrator access and folder permissions.
-5. Put the interactive client id in `.env`.
-6. Run `npm run login`.
+5. Save the interactive client id through `init`.
+6. Run `npx uipath-orchestrator-mcp login`.
 
 ### Typical scopes
 
@@ -236,7 +239,7 @@ Important: OAuth scopes are not enough by themselves. The app or logged-in user 
 
 ## Environment examples
 
-### Service mode
+### Service mode example values
 
 ```env
 UIPATH_BASE_URL=https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_
@@ -249,7 +252,7 @@ UIPATH_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monit
 UIPATH_AUTH_MODE=service
 ```
 
-### Interactive mode
+### Interactive mode example values
 
 ```env
 UIPATH_BASE_URL=https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_
@@ -262,18 +265,20 @@ UIPATH_INTERACTIVE_REDIRECT_URL=http://127.0.0.1:8787/callback
 UIPATH_INTERACTIVE_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines offline_access
 ```
 
+These examples are still useful for contributors and repo-based development, but normal package usage can rely on the saved `config.json` instead of a project `.env`.
+
 ## CLI
 
 ```bash
-npm run init
-npm run doctor
-npm run login
-npm run whoami
-npm run serve
-npm run logout
+npx uipath-orchestrator-mcp init
+npx uipath-orchestrator-mcp doctor
+npx uipath-orchestrator-mcp login
+npx uipath-orchestrator-mcp whoami
+npx uipath-orchestrator-mcp serve
+npx uipath-orchestrator-mcp logout
 ```
 
-## Install and run
+## Local development
 
 ```bash
 npm install
@@ -292,6 +297,17 @@ For verification:
 ```bash
 npm test
 npm run build
+```
+
+If you are contributing inside the repo, these are equivalent local shortcuts:
+
+```bash
+npm run init
+npm run doctor
+npm run login
+npm run whoami
+npm run serve
+npm run logout
 ```
 
 ## MCP client configuration
@@ -369,7 +385,7 @@ That makes it useful not only for demos, but also for real enterprise automation
 
 ## Notes
 
-- keep `.env` and local auth storage out of git
+- keep local `.env`, `config.json`, and auth storage out of git
 - folder access matters as much as scopes
 - `doctor` is the fastest way to understand what is missing in a fresh setup
 - service-mode apps may not always return browseable folder lists even when the configured folder key works; the CLI handles that more gracefully now

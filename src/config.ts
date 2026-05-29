@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { readPersistedConfigSync } from './setup/config-file.js';
 
 const envSchema = z.object({
   UIPATH_BASE_URL: z.url(),
@@ -17,6 +18,7 @@ const envSchema = z.object({
   UIPATH_INTERACTIVE_REDIRECT_URL: z.url().optional(),
   UIPATH_INTERACTIVE_OAUTH_SCOPES: z.string().optional(),
   UIPATH_AUTHORIZE_URL: z.url().optional(),
+  UIPATH_CONFIG_PATH: z.string().optional(),
 });
 
 export type AuthMode = 'service' | 'interactive';
@@ -73,8 +75,18 @@ function resolveAuthStoragePath(source: Record<string, string | undefined>) {
 
 export function loadConfig(
   source: Record<string, string | undefined> = process.env,
+  options: { includePersistedConfig?: boolean } = {},
 ): AppConfig {
-  const env = envSchema.parse(source);
+  const shouldIncludePersistedConfig =
+    options.includePersistedConfig ?? source === process.env;
+  const mergedSource =
+    shouldIncludePersistedConfig
+      ? {
+          ...readPersistedConfigSync(source).values,
+          ...source,
+        }
+      : source;
+  const env = envSchema.parse(mergedSource);
   const baseUrl = new URL(env.UIPATH_BASE_URL);
 
   if (!baseUrl.pathname.endsWith('/')) {
@@ -133,7 +145,7 @@ export function loadConfig(
     tokenUrl,
     auth: {
       mode: env.UIPATH_AUTH_MODE,
-      storagePath: resolveAuthStoragePath(source),
+      storagePath: resolveAuthStoragePath(mergedSource),
       service,
       interactive,
     },

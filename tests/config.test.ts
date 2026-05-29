@@ -1,5 +1,9 @@
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
+import { writePersistedConfig } from '../src/setup/config-file.js';
 
 describe('loadConfig', () => {
   it('parses the minimum env needed to start the server', () => {
@@ -39,5 +43,29 @@ describe('loadConfig', () => {
     expect(config.auth.interactive?.oauthScopes).toBe(
       'OR.Execution OR.Jobs offline_access',
     );
+  });
+
+  it('can load config from persisted package storage', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uipath-mcp-config-'));
+    const configPath = join(dir, 'config.json');
+    await writePersistedConfig(configPath, {
+      UIPATH_BASE_URL:
+        'https://cloud.uipath.com/acme/DefaultTenant/orchestrator_',
+      UIPATH_ACCOUNT_LOGICAL_NAME: 'acme',
+      UIPATH_TENANT_LOGICAL_NAME: 'DefaultTenant',
+      UIPATH_AUTH_MODE: 'interactive',
+      UIPATH_INTERACTIVE_CLIENT_ID: 'interactive-client-id',
+    });
+
+    const config = loadConfig(
+      {
+        UIPATH_CONFIG_PATH: configPath,
+      },
+      { includePersistedConfig: true },
+    );
+
+    expect(config.auth.mode).toBe('interactive');
+    expect(config.accountLogicalName).toBe('acme');
+    expect(config.auth.interactive?.clientId).toBe('interactive-client-id');
   });
 });
