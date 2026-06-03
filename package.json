@@ -1,6 +1,6 @@
 {
   "name": "uipath-orchestrator-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A package-first MCP server for UiPath Orchestrator that lets AI agents run jobs, manage queues, inspect logs, and handle admin workflows through natural language.",
   "keywords": [
     "uipath",
