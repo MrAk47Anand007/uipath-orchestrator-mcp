@@ -63,5 +63,12 @@ export function createJobsApi(
         folder,
       );
     },
+    resumeJob(jobKey: string, folder?: FolderSelector) {
+      return client.post(
+        '/odata/Jobs/UiPath.Server.Configuration.OData.ResumeJob',
+        { jobKey },
+        folder,
+      );
+    },
   };
 }

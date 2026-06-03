@@ -103,4 +103,35 @@ describe('jobs api', () => {
     expect(result.State).toBe('Successful');
     expect(result.OutputArguments).toBe('{"status":"ok"}');
   });
+
+  it('resumes a suspended job by job key', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .post('/acme/DefaultTenant/orchestrator_/odata/Jobs/UiPath.Server.Configuration.OData.ResumeJob', {
+        jobKey: '11111111-1111-1111-1111-111111111111',
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, { Success: true });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Jobs',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const jobsApi = createJobsApi(client);
+    const result = (await jobsApi.resumeJob(
+      '11111111-1111-1111-1111-111111111111',
+      { folderKey: 'folder-key-1' },
+    )) as { Success: boolean };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.Success).toBe(true);
+  });
 });

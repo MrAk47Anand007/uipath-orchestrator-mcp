@@ -76,6 +76,73 @@ describe('queues api', () => {
     expect(result.Status).toBe('New');
   });
 
+  it('bulk adds queue items in one request', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .post('/acme/DefaultTenant/orchestrator_/odata/Queues/UiPathODataSvc.BulkAddQueueItems', {
+        queueName: 'Invoices',
+        commitType: 'ProcessAllIndependently',
+        queueItems: [
+          {
+            Name: 'Invoices',
+            Priority: 'High',
+            SpecificContent: { invoiceId: 'INV-1001' },
+            Reference: 'INV-1001',
+            DeferDate: undefined,
+            DueDate: undefined,
+            RiskSlaDate: undefined,
+            Progress: 'Queued',
+          },
+          {
+            Name: 'Invoices',
+            Priority: 'Normal',
+            SpecificContent: { invoiceId: 'INV-1002' },
+            Reference: 'INV-1002',
+            DeferDate: undefined,
+            DueDate: undefined,
+            RiskSlaDate: undefined,
+            Progress: undefined,
+          },
+        ],
+      })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, { Successful: 2, Failed: 0 });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Queues',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const queuesApi = createQueuesApi(client);
+    const result = (await queuesApi.bulkAddQueueItems({
+      queueName: 'Invoices',
+      queueItems: [
+        {
+          priority: 'High',
+          specificContent: { invoiceId: 'INV-1001' },
+          reference: 'INV-1001',
+          progress: 'Queued',
+        },
+        {
+          specificContent: { invoiceId: 'INV-1002' },
+          reference: 'INV-1002',
+        },
+      ],
+      folder: { folderKey: 'folder-key-1' },
+    })) as { Successful: number; Failed: number };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.Successful).toBe(2);
+    expect(result.Failed).toBe(0);
+  });
+
   it('creates and updates a queue definition', async () => {
     nock('https://cloud.uipath.com')
       .post('/identity_/connect/token')

@@ -22,6 +22,7 @@ import {
   registerJobTools,
   registerJobTriggerTools,
   registerLogsTools,
+  registerOperationsTools,
   registerAlertsTools,
   registerAuditTools,
   registerAdminTools,
@@ -95,6 +96,7 @@ export function createServer(deps: AppDependencies = buildDefaultDependencies())
   registerJobTools(server, deps);
   registerJobTriggerTools(server, deps);
   registerLogsTools(server, deps);
+  registerOperationsTools(server, deps);
   registerAlertsTools(server, deps);
   registerAuditTools(server, deps);
   registerAdminTools(server, deps);

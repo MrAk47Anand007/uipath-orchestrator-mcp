@@ -119,6 +119,40 @@ export function createResourcesApi(
         folder,
       );
     },
+    async readBucketFile(
+      bucketId: number,
+      path: string,
+      folder?: FolderSelector,
+      options?: {
+        expiryInMinutes?: number;
+      },
+    ) {
+      const readAccess = (await this.getBucketReadUri(
+        bucketId,
+        path,
+        options?.expiryInMinutes ?? 15,
+        folder,
+      )) as {
+        Uri: string;
+      };
+
+      const response = await fetch(readAccess.Uri);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `UiPath bucket read failed: ${response.status} ${response.statusText} ${errorText}`,
+        );
+      }
+
+      return {
+        bucketId,
+        path,
+        readUri: readAccess.Uri,
+        contentType: response.headers.get('content-type'),
+        content: await response.text(),
+      };
+    },
     getBucketWriteUri(
       bucketId: number,
       path: string,

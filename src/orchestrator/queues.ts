@@ -268,6 +268,39 @@ export function createQueuesApi(
         input.folder,
       );
     },
+    bulkAddQueueItems(input: {
+      queueName: string;
+      commitType?: 'AllOrNothing' | 'StopOnFirstFailure' | 'ProcessAllIndependently';
+      queueItems: Array<{
+        priority?: 'High' | 'Normal' | 'Low';
+        specificContent: Record<string, unknown>;
+        reference?: string;
+        deferDate?: string;
+        dueDate?: string;
+        riskSlaDate?: string;
+        progress?: string;
+      }>;
+      folder?: FolderSelector;
+    }) {
+      return client.post(
+        '/odata/Queues/UiPathODataSvc.BulkAddQueueItems',
+        {
+          queueName: input.queueName,
+          commitType: input.commitType ?? 'ProcessAllIndependently',
+          queueItems: input.queueItems.map((item) => ({
+            Name: input.queueName,
+            Priority: item.priority ?? 'Normal',
+            SpecificContent: item.specificContent,
+            Reference: item.reference,
+            DeferDate: item.deferDate,
+            DueDate: item.dueDate,
+            RiskSlaDate: item.riskSlaDate,
+            Progress: item.progress,
+          })),
+        },
+        input.folder,
+      );
+    },
     setQueueItemProgress(
       queueItemId: number,
       progress: string,

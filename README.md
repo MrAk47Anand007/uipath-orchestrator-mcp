@@ -24,10 +24,13 @@ Instead of building a custom integration for every AI workflow, you expose Orche
 
 This repo is already live-tested against a real UiPath Cloud tenant.
 
-- `123` MCP tools are registered today
+- `132` MCP tools are registered today
 - service auth and interactive PKCE auth both work
 - onboarding CLI is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
 - core jobs, queues, logs, buckets, schedules, releases, roles, permissions, machines, and runtimes are implemented
+- borrowed operator-friendly tools are now live-smoked too: dashboard summary, running/faulted jobs, error logs, asset value lookup, bulk queue add, and direct bucket file read
+- `uipath_health_check` works as a connectivity probe in this tenant, but the UiPath status endpoint currently returns an empty body
+- `uipath_resume_job` is implemented and tested, but live proof still depends on having a suspended job available in the tenant
 - calendar `exists/create/get/update/delete` are live-tested; `uipath_list_calendars` still returns a UiPath-side `500` in this tenant
 
 ## Demo
@@ -63,8 +66,11 @@ Add your product demo GIF here tomorrow:
 - `uipath_start_job`
 - `uipath_stop_job`
 - `uipath_restart_job`
+- `uipath_resume_job`
 - `uipath_get_job_details`
 - `uipath_get_jobs_stats`
+- `uipath_get_running_jobs`
+- `uipath_get_faulted_jobs`
 - `uipath_list_execution_media`
 
 ### Job triggers
@@ -78,8 +84,11 @@ Add your product demo GIF here tomorrow:
 
 ### Logs and diagnostics
 
+- `uipath_health_check`
+- `uipath_dashboard_summary`
 - `uipath_list_robot_logs`
 - `uipath_get_robot_log_total_count`
+- `uipath_get_error_logs`
 - `uipath_get_status`
 
 ### Alerts
@@ -114,6 +123,7 @@ Add your product demo GIF here tomorrow:
 - `uipath_delete_queue_definition`
 - `uipath_list_queue_items`
 - `uipath_add_queue_item`
+- `uipath_add_queue_items_bulk`
 - `uipath_get_queue_item_processing_history`
 - `uipath_list_queue_item_comments`
 - `uipath_create_queue_item_comment`
@@ -145,11 +155,13 @@ Add your product demo GIF here tomorrow:
 
 - `uipath_list_assets`
 - `uipath_get_asset_by_name`
+- `uipath_get_asset_value`
 - `uipath_create_asset`
 - `uipath_update_asset`
 - `uipath_list_buckets`
 - `uipath_list_bucket_files`
 - `uipath_get_bucket_read_uri`
+- `uipath_read_bucket_file`
 - `uipath_upload_bucket_file`
 - `uipath_delete_bucket_file`
 
@@ -439,6 +451,8 @@ The original live-validation hold items for assets and release/package workflows
 At this point, the main remaining work is product polish rather than missing core behavior:
 
 - `uipath_list_calendars` still returns `500 Internal Server Error` from UiPath in this tenant, even though calendar create/get/update/delete work live
+- `uipath_health_check` currently acts as a connectivity check because `/api/Status/Get` returns an empty body in this tenant
+- `uipath_resume_job` still needs a live suspended-job scenario for end-to-end tenant validation
 - npm publish and package metadata cleanup
 - demo GIFs and launch material
 - broader real-world testing across more UiPath tenant shapes and permission models

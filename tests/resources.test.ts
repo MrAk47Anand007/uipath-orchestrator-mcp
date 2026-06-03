@@ -161,6 +161,47 @@ describe('resources api', () => {
     expect(result.Uri).toContain('download.example');
   });
 
+  it('reads a bucket file through the signed uri', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const readUriScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Buckets(7651)/UiPath.Server.Configuration.OData.GetReadUri')
+      .query({ path: 'sample.txt', expiryInMinutes: '15' })
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, { Uri: 'https://download.example/sample.txt' });
+
+    const downloadScope = nock('https://download.example')
+      .get('/sample.txt')
+      .reply(200, 'hello from bucket', {
+        'content-type': 'text/plain',
+      });
+
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Buckets',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const resourcesApi = createResourcesApi(client);
+    const result = (await resourcesApi.readBucketFile(
+      7651,
+      'sample.txt',
+      { folderKey: 'folder-key-1' },
+      { expiryInMinutes: 15 },
+    )) as { content: string; contentType: string | null; readUri: string };
+
+    expect(readUriScope.isDone()).toBe(true);
+    expect(downloadScope.isDone()).toBe(true);
+    expect(result.content).toBe('hello from bucket');
+    expect(result.contentType).toBe('text/plain');
+    expect(result.readUri).toContain('download.example');
+  });
+
   it('gets a direct write uri for a bucket file', async () => {
     nock('https://cloud.uipath.com')
       .post('/acme/identity_/connect/token')
