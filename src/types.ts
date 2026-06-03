@@ -8,4 +8,6 @@ export type OrchestratorRequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: unknown;
   folder?: FolderSelector;
+  headers?: Record<string, string>;
+  skipDefaultFolder?: boolean;
 };

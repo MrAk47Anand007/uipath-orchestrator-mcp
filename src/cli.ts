@@ -289,12 +289,12 @@ export async function runInitCommand(
       ? await prompt(
           'Interactive scopes',
           current.UIPATH_INTERACTIVE_OAUTH_SCOPES ??
-            'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets offline_access',
+            'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings offline_access',
         )
       : await prompt(
           'Service scopes',
           current.UIPATH_OAUTH_SCOPES ??
-            'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets',
+            'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings',
         );
   const interactiveClientId =
     authMode === 'interactive'
@@ -341,7 +341,7 @@ export async function runInitCommand(
       authMode === 'service'
         ? scopes
         : current.UIPATH_OAUTH_SCOPES ??
-          'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines',
+          'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings',
     UIPATH_INTERACTIVE_OAUTH_SCOPES:
       authMode === 'interactive'
         ? scopes

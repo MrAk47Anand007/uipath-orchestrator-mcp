@@ -4,6 +4,54 @@ export function createAdminApi(
   client: ReturnType<typeof createOrchestratorClient>,
 ) {
   return {
+    listUsers(input?: {
+      top?: number;
+      skip?: number;
+      filter?: string;
+      orderBy?: string;
+      count?: boolean;
+    }) {
+      const query = new URLSearchParams({
+        $top: String(input?.top ?? 25),
+        $count: String(input?.count ?? true),
+      });
+
+      if (input?.skip !== undefined) {
+        query.set('$skip', String(input.skip));
+      }
+
+      if (input?.filter) {
+        query.set('$filter', input.filter);
+      }
+
+      if (input?.orderBy) {
+        query.set('$orderby', input.orderBy);
+      }
+
+      return client.get(`/odata/Users?${query.toString()}`);
+    },
+    getUserById(userId: number) {
+      return client.get(`/odata/Users(${userId})`);
+    },
+    getUserByKey(userKey: string) {
+      return client.get(
+        `/odata/Users/UiPath.Server.Configuration.OData.GetByKey(identifier=${userKey})`,
+      );
+    },
+    getCurrentUser() {
+      return client.get('/odata/Users/UiPath.Server.Configuration.OData.GetCurrentUser');
+    },
+    getCurrentPermissions() {
+      return client.get(
+        '/odata/Users/UiPath.Server.Configuration.OData.GetCurrentPermissions',
+      );
+    },
+    validateUsers(userIds: number[]) {
+      const ids = userIds.join(',');
+      return client.get(
+        `/odata/Users/UiPath.Server.Configuration.OData.Validate(userIds=[${ids}])`,
+      );
+    },
     getDirectoryPermissions(input: { username?: string; domain?: string }) {
       const query = new URLSearchParams();
       if (input.username) {

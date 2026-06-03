@@ -24,10 +24,11 @@ Instead of building a custom integration for every AI workflow, you expose Orche
 
 This repo is already live-tested against a real UiPath Cloud tenant.
 
-- `61` MCP tools are registered today
+- `123` MCP tools are registered today
 - service auth and interactive PKCE auth both work
 - onboarding CLI is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
 - core jobs, queues, logs, buckets, schedules, releases, roles, permissions, machines, and runtimes are implemented
+- calendar `exists/create/get/update/delete` are live-tested; `uipath_list_calendars` still returns a UiPath-side `500` in this tenant
 
 ## Demo
 
@@ -66,17 +67,63 @@ Add your product demo GIF here tomorrow:
 - `uipath_get_jobs_stats`
 - `uipath_list_execution_media`
 
+### Job triggers
+
+- `uipath_list_job_triggers`
+- `uipath_get_job_triggers_by_job_key`
+- `uipath_get_job_trigger_wait_events`
+- `uipath_create_external_job_trigger`
+- `uipath_get_job_trigger_payload`
+- `uipath_deliver_job_trigger_payload`
+
 ### Logs and diagnostics
 
 - `uipath_list_robot_logs`
 - `uipath_get_robot_log_total_count`
 - `uipath_get_status`
 
+### Alerts
+
+- `uipath_list_alerts`
+- `uipath_get_unread_alert_count`
+- `uipath_mark_alerts_as_read`
+- `uipath_raise_process_alert`
+
+### Audit logs
+
+- `uipath_list_audit_logs`
+- `uipath_export_audit_logs`
+- `uipath_get_audit_log_details`
+
+### Calendars
+
+- `uipath_list_calendars`
+- `uipath_get_calendar`
+- `uipath_create_calendar`
+- `uipath_update_calendar`
+- `uipath_delete_calendar`
+- `uipath_calendar_exists`
+
 ### Queues
 
+- `uipath_create_queue_definition`
+- `uipath_get_queue_definition`
+- `uipath_get_queue_definition_by_key`
 - `uipath_list_queue_definitions`
+- `uipath_update_queue_definition`
+- `uipath_delete_queue_definition`
 - `uipath_list_queue_items`
 - `uipath_add_queue_item`
+- `uipath_get_queue_item_processing_history`
+- `uipath_list_queue_item_comments`
+- `uipath_create_queue_item_comment`
+- `uipath_update_queue_item_comment`
+- `uipath_delete_queue_item_comment`
+- `uipath_get_queue_item_comments_history`
+- `uipath_list_queue_item_events`
+- `uipath_get_queue_item_events_history`
+- `uipath_get_queues_processing_status`
+- `uipath_get_queue_processing_records`
 - `uipath_set_queue_item_progress`
 
 ### Robots, machines, and runtimes
@@ -113,6 +160,23 @@ Add your product demo GIF here tomorrow:
 - `uipath_set_schedule_enabled`
 - `uipath_delete_schedule`
 
+### Tasks and human-in-the-loop
+
+- `uipath_list_tasks`
+- `uipath_get_task`
+- `uipath_get_task_by_key`
+- `uipath_list_tasks_across_folders`
+- `uipath_get_task_permissions`
+- `uipath_get_task_users`
+- `uipath_create_generic_task`
+- `uipath_get_generic_task_data`
+- `uipath_save_generic_task_data`
+- `uipath_complete_generic_task`
+- `uipath_save_and_reassign_generic_task`
+- `uipath_list_task_notes`
+- `uipath_create_task_note`
+- `uipath_list_task_activities`
+
 ### Releases and packages
 
 - `uipath_create_release`
@@ -123,6 +187,17 @@ Add your product demo GIF here tomorrow:
 - `uipath_update_release_to_latest_package`
 - `uipath_update_release_to_specific_package`
 - `uipath_rollback_release`
+
+### Webhooks
+
+- `uipath_list_webhooks`
+- `uipath_get_webhook`
+- `uipath_list_webhook_event_types`
+- `uipath_create_webhook`
+- `uipath_update_webhook`
+- `uipath_delete_webhook`
+- `uipath_ping_webhook`
+- `uipath_trigger_custom_webhook_event`
 
 ### Roles, users, and access management
 
@@ -136,6 +211,12 @@ Add your product demo GIF here tomorrow:
 - `uipath_list_folder_users`
 - `uipath_get_user_folder_roles`
 - `uipath_assign_users_to_folders`
+- `uipath_list_users`
+- `uipath_get_user`
+- `uipath_get_user_by_key`
+- `uipath_get_current_user`
+- `uipath_get_current_permissions`
+- `uipath_validate_users`
 
 ## Supported auth modes
 
@@ -234,6 +315,10 @@ The exact scopes depend on what you want the agent to do, but common ones includ
 - `OR.Buckets`
 - `OR.Users`
 - `OR.Machines`
+- `OR.Tasks`
+- `OR.Webhooks`
+- `OR.Settings`
+- `OR.Audit`
 
 Important: OAuth scopes are not enough by themselves. The app or logged-in user also needs real Orchestrator folder access.
 
@@ -248,7 +333,7 @@ UIPATH_TENANT_LOGICAL_NAME=DefaultTenant
 UIPATH_CLIENT_ID=your-service-client-id
 UIPATH_CLIENT_SECRET=your-service-client-secret
 UIPATH_FOLDER_KEY=your-folder-key
-UIPATH_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines
+UIPATH_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings
 UIPATH_AUTH_MODE=service
 ```
 
@@ -262,7 +347,7 @@ UIPATH_FOLDER_KEY=your-folder-key
 UIPATH_AUTH_MODE=interactive
 UIPATH_INTERACTIVE_CLIENT_ID=your-interactive-client-id
 UIPATH_INTERACTIVE_REDIRECT_URL=http://127.0.0.1:8787/callback
-UIPATH_INTERACTIVE_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines offline_access
+UIPATH_INTERACTIVE_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings offline_access
 ```
 
 These examples are still useful for contributors and repo-based development, but normal package usage can rely on the saved `config.json` instead of a project `.env`.
@@ -347,17 +432,16 @@ These are the kinds of requests this MCP is built for:
 - `Find the roles assigned to anand.kale@xalta.tech.`
 - `Assign Automation User to this user in the Shared folder.`
 
-## Known gaps and hold list
+## Known gaps
 
-Most of the project is live-tested, but a few items are intentionally still on hold:
+The original live-validation hold items for assets and release/package workflows are now resolved.
 
-- live asset create/update behavior still needs a final UiPath API workaround
-- live `.nupkg` upload test is pending a safe real package file
-- live process package delete test is pending a disposable test package
-- live rollback test needs a release with real version history
-- live verification of `update to latest package version` needs a tenant setup where version movement is observable
+At this point, the main remaining work is product polish rather than missing core behavior:
 
-So the code surface is broad, but a small number of deeper release/resource write flows still need final live validation.
+- `uipath_list_calendars` still returns `500 Internal Server Error` from UiPath in this tenant, even though calendar create/get/update/delete work live
+- npm publish and package metadata cleanup
+- demo GIFs and launch material
+- broader real-world testing across more UiPath tenant shapes and permission models
 
 ## Safety notes
 

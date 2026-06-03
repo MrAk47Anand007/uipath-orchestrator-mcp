@@ -6,6 +6,118 @@ import { createServer } from '../src/server.js';
 describe('admin api', () => {
   beforeEach(() => nock.cleanAll());
 
+  it('lists users with filters', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users')
+      .query({
+        $top: '25',
+        $count: 'true',
+        $filter: "startswith(EmailAddress,'anand')",
+      })
+      .reply(200, {
+        value: [{ Id: 595422, Name: 'Anand Kale', EmailAddress: 'anand.kale@xalta.tech' }],
+      });
+
+    const { createAdminApi } = await import('../src/orchestrator/admin.js');
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Users',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const adminApi = createAdminApi(client);
+    const result = (await adminApi.listUsers({
+      filter: "startswith(EmailAddress,'anand')",
+    })) as { value: Array<{ EmailAddress: string }> };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.value[0].EmailAddress).toBe('anand.kale@xalta.tech');
+  });
+
+  it('gets a user by id and key plus current user and permissions', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const byIdScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users(595422)')
+      .reply(200, { Id: 595422, Name: 'Anand Kale' });
+
+    const byKeyScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users/UiPath.Server.Configuration.OData.GetByKey(identifier=11111111-1111-1111-1111-111111111111)')
+      .reply(200, { Id: 595422, Key: '11111111-1111-1111-1111-111111111111' });
+
+    const currentUserScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users/UiPath.Server.Configuration.OData.GetCurrentUser')
+      .reply(200, { Id: 595422, Name: 'Anand Kale' });
+
+    const permissionsScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users/UiPath.Server.Configuration.OData.GetCurrentPermissions')
+      .reply(200, { UserId: 595422, Permissions: ['Users.View', 'Queues.View'] });
+
+    const { createAdminApi } = await import('../src/orchestrator/admin.js');
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Users',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const adminApi = createAdminApi(client);
+    const byId = (await adminApi.getUserById(595422)) as { Name: string };
+    const byKey = (await adminApi.getUserByKey('11111111-1111-1111-1111-111111111111')) as { Key: string };
+    const currentUser = (await adminApi.getCurrentUser()) as { Name: string };
+    const permissions = (await adminApi.getCurrentPermissions()) as {
+      Permissions: string[];
+    };
+
+    expect(byIdScope.isDone()).toBe(true);
+    expect(byKeyScope.isDone()).toBe(true);
+    expect(currentUserScope.isDone()).toBe(true);
+    expect(permissionsScope.isDone()).toBe(true);
+    expect(byId.Name).toBe('Anand Kale');
+    expect(byKey.Key).toBe('11111111-1111-1111-1111-111111111111');
+    expect(currentUser.Name).toBe('Anand Kale');
+    expect(permissions.Permissions).toContain('Users.View');
+  });
+
+  it('validates users by ids', async () => {
+    nock('https://cloud.uipath.com')
+      .post('/acme/identity_/connect/token')
+      .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
+
+    const scope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Users/UiPath.Server.Configuration.OData.Validate(userIds=[595422,595423])')
+      .reply(200, { IsValid: true, Errors: [] });
+
+    const { createAdminApi } = await import('../src/orchestrator/admin.js');
+    const client = createOrchestratorClient({
+      baseUrl: new URL('https://cloud.uipath.com/acme/DefaultTenant/orchestrator_/'),
+      tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      oauthScopes: 'OR.Users',
+      defaultFolderKey: 'folder-key-1',
+    });
+
+    const adminApi = createAdminApi(client);
+    const result = (await adminApi.validateUsers([595422, 595423])) as {
+      IsValid: boolean;
+    };
+
+    expect(scope.isDone()).toBe(true);
+    expect(result.IsValid).toBe(true);
+  });
+
   it('searches directory objects by query and type', async () => {
     nock('https://cloud.uipath.com')
       .post('/acme/identity_/connect/token')
@@ -319,6 +431,12 @@ describe('admin MCP tools', () => {
         getStatus: vi.fn(),
       },
       adminApi: {
+        listUsers: vi.fn(),
+        getUserById: vi.fn(),
+        getUserByKey: vi.fn(),
+        getCurrentUser: vi.fn(),
+        getCurrentPermissions: vi.fn(),
+        validateUsers: vi.fn(),
         searchDirectoryObjects: vi.fn(),
         listRoles: vi.fn(),
         getUsersForRole: vi.fn(),
@@ -336,6 +454,12 @@ describe('admin MCP tools', () => {
       _registeredTools?: Record<string, unknown>;
     })._registeredTools;
 
+    expect(registeredTools?.uipath_list_users).toBeDefined();
+    expect(registeredTools?.uipath_get_user).toBeDefined();
+    expect(registeredTools?.uipath_get_user_by_key).toBeDefined();
+    expect(registeredTools?.uipath_get_current_user).toBeDefined();
+    expect(registeredTools?.uipath_get_current_permissions).toBeDefined();
+    expect(registeredTools?.uipath_validate_users).toBeDefined();
     expect(registeredTools?.uipath_search_directory_objects).toBeDefined();
     expect(registeredTools?.uipath_list_roles).toBeDefined();
     expect(registeredTools?.uipath_list_folder_users).toBeDefined();

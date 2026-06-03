@@ -5,6 +5,7 @@ function applyFolderHeaders(
   headers: Headers,
   folder?: FolderSelector,
   defaultFolderKey?: string,
+  skipDefaultFolder = false,
 ) {
   if (folder?.folderKey) {
     headers.set('X-UIPATH-FolderKey', folder.folderKey);
@@ -12,7 +13,7 @@ function applyFolderHeaders(
     headers.set('X-UIPATH-OrganizationUnitId', String(folder.folderId));
   } else if (folder?.folderPath) {
     headers.set('X-UIPATH-FolderPath', folder.folderPath);
-  } else if (defaultFolderKey) {
+  } else if (!skipDefaultFolder && defaultFolderKey) {
     headers.set('X-UIPATH-FolderKey', defaultFolderKey);
   }
 }
@@ -53,7 +54,18 @@ export function createOrchestratorClient(
       headers.set('content-type', 'application/json');
     }
 
-    applyFolderHeaders(headers, options.folder, config.defaultFolderKey);
+    applyFolderHeaders(
+      headers,
+      options.folder,
+      config.defaultFolderKey,
+      options.skipDefaultFolder,
+    );
+
+    if (options.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        headers.set(key, value);
+      }
+    }
 
     const response = await fetch(url, {
       method: options.method ?? 'GET',
@@ -83,14 +95,59 @@ export function createOrchestratorClient(
   return {
     get: <T>(path: string, folder?: FolderSelector) =>
       request<T>(path, { method: 'GET', folder }),
+    getTenantScoped: <T>(path: string, folder?: FolderSelector) =>
+      request<T>(path, { method: 'GET', folder, skipDefaultFolder: true }),
+    getWithoutFolder: <T>(path: string) =>
+      request<T>(path, { method: 'GET', skipDefaultFolder: true }),
+    getWithHeaders: <T>(
+      path: string,
+      headers: Record<string, string>,
+      folder?: FolderSelector,
+    ) => request<T>(path, { method: 'GET', headers, folder }),
     post: <T>(path: string, body: unknown, folder?: FolderSelector) =>
       request<T>(path, { method: 'POST', body, folder }),
+    postTenantScoped: <T>(
+      path: string,
+      body: unknown,
+      folder?: FolderSelector,
+    ) =>
+      request<T>(path, {
+        method: 'POST',
+        body,
+        folder,
+        skipDefaultFolder: true,
+      }),
+    postWithoutFolder: <T>(path: string, body: unknown) =>
+      request<T>(path, { method: 'POST', body, skipDefaultFolder: true }),
+    postWithHeaders: <T>(
+      path: string,
+      body: unknown,
+      headers: Record<string, string>,
+      folder?: FolderSelector,
+    ) => request<T>(path, { method: 'POST', body, headers, folder }),
     put: <T>(path: string, body: unknown, folder?: FolderSelector) =>
       request<T>(path, { method: 'PUT', body, folder }),
+    putTenantScoped: <T>(
+      path: string,
+      body: unknown,
+      folder?: FolderSelector,
+    ) =>
+      request<T>(path, {
+        method: 'PUT',
+        body,
+        folder,
+        skipDefaultFolder: true,
+      }),
+    putWithoutFolder: <T>(path: string, body: unknown) =>
+      request<T>(path, { method: 'PUT', body, skipDefaultFolder: true }),
     patch: <T>(path: string, body: unknown, folder?: FolderSelector) =>
       request<T>(path, { method: 'PATCH', body, folder }),
     delete: <T>(path: string, folder?: FolderSelector) =>
       request<T>(path, { method: 'DELETE', folder }),
+    deleteTenantScoped: <T>(path: string, folder?: FolderSelector) =>
+      request<T>(path, { method: 'DELETE', folder, skipDefaultFolder: true }),
+    deleteWithoutFolder: <T>(path: string) =>
+      request<T>(path, { method: 'DELETE', skipDefaultFolder: true }),
     postFormData: async <T>(
       path: string,
       formData: FormData,

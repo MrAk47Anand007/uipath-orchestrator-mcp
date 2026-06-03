@@ -1,9 +1,15 @@
+export { registerAlertsTools } from './alerts.js';
+export { registerAuditTools } from './audit.js';
 export { registerAdminTools } from './admin.js';
+export { registerCalendarTools } from './calendars.js';
 export { registerFolderTools } from './folders.js';
 export { registerJobTools } from './jobs.js';
+export { registerJobTriggerTools } from './job-triggers.js';
 export { registerLogsTools } from './logs.js';
 export { registerQueueTools } from './queues.js';
 export { registerResourceTools } from './resources.js';
 export { registerRobotTools } from './robots.js';
 export { registerReleaseTools } from './releases.js';
 export { registerScheduleTools } from './schedules.js';
+export { registerTaskTools } from './tasks.js';
+export { registerWebhookTools } from './webhooks.js';

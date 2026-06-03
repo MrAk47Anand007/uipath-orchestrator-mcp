@@ -3,6 +3,18 @@ import { z } from 'zod';
 
 type AdminToolsDeps = {
   adminApi: {
+    listUsers: (input?: {
+      top?: number;
+      skip?: number;
+      filter?: string;
+      orderBy?: string;
+      count?: boolean;
+    }) => Promise<unknown>;
+    getUserById: (userId: number) => Promise<unknown>;
+    getUserByKey: (userKey: string) => Promise<unknown>;
+    getCurrentUser: () => Promise<unknown>;
+    getCurrentPermissions: () => Promise<unknown>;
+    validateUsers: (userIds: number[]) => Promise<unknown>;
     getDirectoryPermissions: (input: {
       username?: string;
       domain?: string;
@@ -60,6 +72,130 @@ function assertConfirmed(confirm: boolean, action: string) {
 }
 
 export function registerAdminTools(server: McpServer, deps: AdminToolsDeps) {
+  server.registerTool(
+    'uipath_list_users',
+    {
+      description:
+        'List UiPath users with optional OData filters, sorting, and pagination.',
+      inputSchema: z.object({
+        top: z.number().int().positive().max(1000).default(25),
+        skip: z.number().int().min(0).optional(),
+        filter: z.string().optional(),
+        orderBy: z.string().optional(),
+      }),
+    },
+    async ({ top, skip, filter, orderBy }) => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            await deps.adminApi.listUsers({
+              top,
+              skip,
+              filter,
+              orderBy,
+              count: true,
+            }),
+            null,
+            2,
+          ),
+        },
+      ],
+    }),
+  );
+
+  server.registerTool(
+    'uipath_get_user',
+    {
+      description: 'Get a UiPath user by numeric id.',
+      inputSchema: z.object({
+        userId: z.number().int().positive(),
+      }),
+    },
+    async ({ userId }) => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(await deps.adminApi.getUserById(userId), null, 2),
+        },
+      ],
+    }),
+  );
+
+  server.registerTool(
+    'uipath_get_user_by_key',
+    {
+      description: 'Get a UiPath user by GUID key.',
+      inputSchema: z.object({
+        userKey: z.uuid(),
+      }),
+    },
+    async ({ userKey }) => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(await deps.adminApi.getUserByKey(userKey), null, 2),
+        },
+      ],
+    }),
+  );
+
+  server.registerTool(
+    'uipath_get_current_user',
+    {
+      description: 'Get the currently authenticated UiPath user.',
+      inputSchema: z.object({}),
+    },
+    async () => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(await deps.adminApi.getCurrentUser(), null, 2),
+        },
+      ],
+    }),
+  );
+
+  server.registerTool(
+    'uipath_get_current_permissions',
+    {
+      description:
+        'Get the current UiPath user and the permission names associated with that session.',
+      inputSchema: z.object({}),
+    },
+    async () => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            await deps.adminApi.getCurrentPermissions(),
+            null,
+            2,
+          ),
+        },
+      ],
+    }),
+  );
+
+  server.registerTool(
+    'uipath_validate_users',
+    {
+      description:
+        'Validate whether the given UiPath users are available or blocked by robot-busy constraints.',
+      inputSchema: z.object({
+        userIds: z.array(z.number().int().positive()).min(1),
+      }),
+    },
+    async ({ userIds }) => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(await deps.adminApi.validateUsers(userIds), null, 2),
+        },
+      ],
+    }),
+  );
+
   server.registerTool(
     'uipath_get_directory_permissions',
     {

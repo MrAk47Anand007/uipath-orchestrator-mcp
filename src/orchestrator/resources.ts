@@ -63,7 +63,21 @@ export function createResourcesApi(
       asset: Record<string, unknown>,
       folder?: FolderSelector,
     ) {
-      return client.put(`/odata/Assets(${assetId})`, asset, folder);
+      return (async () => {
+        const existing = (await client.get(
+          `/odata/Assets(${assetId})`,
+          folder,
+        )) as Record<string, unknown>;
+
+        return client.put(
+          `/odata/Assets(${assetId})`,
+          {
+            ...existing,
+            ...asset,
+          },
+          folder,
+        );
+      })();
     },
     listBuckets(top = 20, folder?: FolderSelector) {
       return client.get(`/odata/Buckets?$top=${top}`, folder);

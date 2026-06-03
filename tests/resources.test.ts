@@ -345,13 +345,64 @@ describe('resources api', () => {
       .post('/acme/identity_/connect/token')
       .reply(200, { access_token: 'token', token_type: 'Bearer', expires_in: 3600 });
 
-    const scope = nock('https://cloud.uipath.com')
-      .put('/acme/DefaultTenant/orchestrator_/odata/Assets(99)', {
+    const getScope = nock('https://cloud.uipath.com')
+      .get('/acme/DefaultTenant/orchestrator_/odata/Assets(99)')
+      .matchHeader('x-uipath-folderkey', 'folder-key-1')
+      .reply(200, {
+        Key: 'asset-key-1',
         Name: 'NewTextAsset',
+        CanBeDeleted: true,
         ValueScope: 'Global',
         ValueType: 'Text',
+        Value: 'hello world',
+        StringValue: 'hello world',
+        BoolValue: false,
+        IntValue: 0,
+        CredentialUsername: '',
+        CredentialPassword: '',
+        SecretValue: '',
+        ExternalName: '',
+        CredentialStoreId: null,
+        HasDefaultValue: true,
+        Description: 'Created from MCP',
+        AllowDirectApiAccess: false,
+        FoldersCount: 1,
+        LastModificationTime: '2026-06-02T00:00:00Z',
+        LastModifierUserId: 1,
+        CreationTime: '2026-06-01T00:00:00Z',
+        CreatorUserId: 1,
+        Id: 99,
+        KeyValueList: [],
+        Tags: [],
+      });
+
+    const putScope = nock('https://cloud.uipath.com')
+      .put('/acme/DefaultTenant/orchestrator_/odata/Assets(99)', {
+        Key: 'asset-key-1',
+        Name: 'NewTextAsset',
+        CanBeDeleted: true,
+        ValueScope: 'Global',
+        ValueType: 'Text',
+        Value: 'hello world',
         StringValue: 'updated text',
+        BoolValue: false,
+        IntValue: 0,
+        CredentialUsername: '',
+        CredentialPassword: '',
+        SecretValue: '',
+        ExternalName: '',
+        CredentialStoreId: null,
+        HasDefaultValue: true,
         Description: 'Updated from MCP',
+        AllowDirectApiAccess: false,
+        FoldersCount: 1,
+        LastModificationTime: '2026-06-02T00:00:00Z',
+        LastModifierUserId: 1,
+        CreationTime: '2026-06-01T00:00:00Z',
+        CreatorUserId: 1,
+        Id: 99,
+        KeyValueList: [],
+        Tags: [],
       })
       .matchHeader('x-uipath-folderkey', 'folder-key-1')
       .reply(200);
@@ -378,6 +429,7 @@ describe('resources api', () => {
       { folderKey: 'folder-key-1' },
     );
 
-    expect(scope.isDone()).toBe(true);
+    expect(getScope.isDone()).toBe(true);
+    expect(putScope.isDone()).toBe(true);
   });
 });
