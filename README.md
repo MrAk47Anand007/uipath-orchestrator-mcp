@@ -33,24 +33,6 @@ This repo is already live-tested against a real UiPath Cloud tenant.
 - `uipath_resume_job` is implemented and tested, but live proof still depends on having a suspended job available in the tenant
 - calendar `exists/create/get/update/delete` are live-tested; `uipath_list_calendars` still returns a UiPath-side `500` in this tenant
 
-## Demo
-
-### Setup demo placeholder
-
-Add your setup GIF here tomorrow:
-
-```md
-![Setup Demo](./docs/media/setup-demo.gif)
-```
-
-### Live usage demo placeholder
-
-Add your product demo GIF here tomorrow:
-
-```md
-![Usage Demo](./docs/media/usage-demo.gif)
-```
-
 ## What the MCP can do
 
 ### Folder and discovery
