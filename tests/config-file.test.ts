@@ -4,9 +4,13 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   readPersistedConfig,
+  readPersistedServiceSecretSync,
   resolveConfigPath,
+  resolveServiceSecretPath,
+  writePersistedServiceSecret,
   writePersistedConfig,
 } from '../src/setup/config-file.js';
+import { createTestSecureStorage } from '../src/setup/secure-storage.js';
 
 describe('config file storage', () => {
   it('resolves the default package config location', () => {
@@ -69,5 +73,29 @@ describe('config file storage', () => {
 
     expect(loaded.values.UIPATH_SOME_BOOLEAN).toBe('true');
     expect(loaded.values.UIPATH_SOME_NUMBER).toBe('42');
+  });
+
+  it('stores the service client secret outside config.json', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uipath-mcp-config-'));
+    const path = join(dir, 'config.json');
+    const secretPath = resolveServiceSecretPath({
+      UIPATH_CONFIG_PATH: path,
+    });
+    const secureStorage = createTestSecureStorage();
+
+    await writePersistedConfig(path, {
+      UIPATH_AUTH_MODE: 'service',
+      UIPATH_CLIENT_ID: 'client-id',
+    });
+    await writePersistedServiceSecret(secretPath, 'client-secret', secureStorage);
+
+    const savedConfig = JSON.parse(await readFile(path, 'utf8')) as Record<string, string>;
+    const savedSecret = await readFile(secretPath, 'utf8');
+
+    expect(savedConfig.UIPATH_CLIENT_SECRET).toBeUndefined();
+    expect(savedSecret).not.toContain('client-secret');
+    expect(readPersistedServiceSecretSync(secretPath, secureStorage)).toBe(
+      'client-secret',
+    );
   });
 });

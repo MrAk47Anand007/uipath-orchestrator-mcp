@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildAuthorizeUrl,
+  createTestSecureStorage,
   listenForAuthorizationCode,
   createCodeChallenge,
   createInteractiveTokenProvider,
@@ -67,6 +68,7 @@ describe('interactive session storage', () => {
   });
 
   it('saves, loads, and clears the interactive session', async () => {
+    const secureStorage = createTestSecureStorage();
     await saveInteractiveSession(storagePath, {
       accessToken: 'access-token-1',
       refreshToken: 'refresh-token-1',
@@ -76,9 +78,12 @@ describe('interactive session storage', () => {
       accountLogicalName: 'acme',
       tenantLogicalName: 'DefaultTenant',
       clientId: 'interactive-client-id',
-    });
+    }, secureStorage);
 
-    const loaded = await loadInteractiveSession(storagePath);
+    const raw = await readFile(storagePath, 'utf8');
+    expect(raw).not.toContain('access-token-1');
+
+    const loaded = await loadInteractiveSession(storagePath, secureStorage);
 
     expect(loaded?.refreshToken).toBe('refresh-token-1');
 
@@ -141,6 +146,7 @@ describe('interactive token provider', () => {
   });
 
   it('refreshes an expired session and persists the new token', async () => {
+    const secureStorage = createTestSecureStorage();
     await saveInteractiveSession(storagePath, {
       accessToken: 'expired-access-token',
       refreshToken: 'refresh-token-1',
@@ -150,7 +156,7 @@ describe('interactive token provider', () => {
       accountLogicalName: 'acme',
       tenantLogicalName: 'DefaultTenant',
       clientId: 'interactive-client-id',
-    });
+    }, secureStorage);
 
     const refreshScope = nock('https://cloud.uipath.com')
       .post('/acme/identity_/connect/token', (body) => {
@@ -173,16 +179,18 @@ describe('interactive token provider', () => {
       tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
       storagePath,
       clientId: 'interactive-client-id',
+      secureStorage,
     });
 
     await expect(getAccessToken()).resolves.toBe('refreshed-access-token');
     expect(refreshScope.isDone()).toBe(true);
 
-    const saved = await loadInteractiveSession(storagePath);
+    const saved = await loadInteractiveSession(storagePath, secureStorage);
     expect(saved?.refreshToken).toBe('refresh-token-2');
   });
 
   it('returns the stored token when the session is still valid', async () => {
+    const secureStorage = createTestSecureStorage();
     await saveInteractiveSession(storagePath, {
       accessToken: 'still-valid-token',
       refreshToken: 'refresh-token-1',
@@ -192,13 +200,14 @@ describe('interactive token provider', () => {
       accountLogicalName: 'acme',
       tenantLogicalName: 'DefaultTenant',
       clientId: 'interactive-client-id',
-    });
+    }, secureStorage);
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const getAccessToken = createInteractiveTokenProvider({
       tokenUrl: new URL('https://cloud.uipath.com/acme/identity_/connect/token'),
       storagePath,
       clientId: 'interactive-client-id',
+      secureStorage,
     });
 
     await expect(getAccessToken()).resolves.toBe('still-valid-token');

@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
-import { writePersistedConfig } from '../src/setup/config-file.js';
+import {
+  resolveServiceSecretPath,
+  writePersistedConfig,
+  writePersistedServiceSecret,
+} from '../src/setup/config-file.js';
+import { createTestSecureStorage } from '../src/setup/secure-storage.js';
 
 describe('loadConfig', () => {
   it('parses the minimum env needed to start the server', () => {
@@ -67,5 +72,36 @@ describe('loadConfig', () => {
     expect(config.auth.mode).toBe('interactive');
     expect(config.accountLogicalName).toBe('acme');
     expect(config.auth.interactive?.clientId).toBe('interactive-client-id');
+  });
+
+  it('loads the service client secret from secure sidecar storage', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uipath-mcp-config-'));
+    const configPath = join(dir, 'config.json');
+    const secretPath = resolveServiceSecretPath({
+      UIPATH_CONFIG_PATH: configPath,
+    });
+    const secureStorage = createTestSecureStorage();
+
+    await writePersistedConfig(configPath, {
+      UIPATH_BASE_URL:
+        'https://cloud.uipath.com/acme/DefaultTenant/orchestrator_',
+      UIPATH_ACCOUNT_LOGICAL_NAME: 'acme',
+      UIPATH_TENANT_LOGICAL_NAME: 'DefaultTenant',
+      UIPATH_AUTH_MODE: 'service',
+      UIPATH_CLIENT_ID: 'client-id',
+    });
+    await writePersistedServiceSecret(secretPath, 'client-secret', secureStorage);
+
+    const config = loadConfig(
+      {
+        UIPATH_CONFIG_PATH: configPath,
+      },
+      {
+        includePersistedConfig: true,
+        secureStorage,
+      },
+    );
+
+    expect(config.auth.service?.clientSecret).toBe('client-secret');
   });
 });

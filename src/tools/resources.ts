@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { assertLocalFilePathAllowed } from '../setup/local-path-policy.js';
 
 const assetValueSchema = z.discriminatedUnion('valueType', [
   z.object({
@@ -79,6 +80,31 @@ type ResourceToolsDeps = {
   };
 };
 
+function sanitizeAssetForModel(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+
+  const asset = { ...(value as Record<string, unknown>) };
+
+  if ('SecretValue' in asset) {
+    asset.SecretValue = '[REDACTED]';
+  }
+
+  if ('CredentialPassword' in asset) {
+    asset.CredentialPassword = '[REDACTED]';
+  }
+
+  if (
+    asset.ValueType === 'Secret' ||
+    (typeof asset.CredentialUsername === 'string' && asset.CredentialUsername.length > 0)
+  ) {
+    asset.Redacted = true;
+  }
+
+  return asset;
+}
+
 export function registerResourceTools(
   server: McpServer,
   deps: ResourceToolsDeps,
@@ -157,13 +183,16 @@ export function registerResourceTools(
               ? { IntValue: value.intValue }
               : { SecretValue: value.secretValue }),
       };
+      const createdAsset = await deps.resourcesApi.createAsset(asset, {
+        folderKey,
+      });
 
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify(
-              await deps.resourcesApi.createAsset(asset, { folderKey }),
+              sanitizeAssetForModel(createdAsset),
               null,
               2,
             ),
@@ -228,7 +257,9 @@ export function registerResourceTools(
         {
           type: 'text',
           text: JSON.stringify(
-            await deps.resourcesApi.getAssetByName(name, { folderKey }),
+            sanitizeAssetForModel(
+              await deps.resourcesApi.getAssetByName(name, { folderKey }),
+            ),
             null,
             2,
           ),
@@ -306,6 +337,7 @@ export function registerResourceTools(
       inputSchema: z.object({
         bucketId: z.number().int().positive(),
         localFilePath: z.string().min(1),
+        confirm: z.boolean().default(false),
         targetPath: z.string().min(1).optional(),
         contentType: z.string().min(1).optional(),
         expiryInMinutes: z.number().int().positive().max(1440).default(15),
@@ -315,27 +347,38 @@ export function registerResourceTools(
     async ({
       bucketId,
       localFilePath,
+      confirm,
       targetPath,
       contentType,
       expiryInMinutes,
       folderKey,
-    }) => ({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            await deps.resourcesApi.uploadBucketFile(
-              bucketId,
-              localFilePath,
-              { folderKey },
-              { targetPath, contentType, expiryInMinutes },
+    }) => {
+      if (!confirm) {
+        throw new Error(
+          'Uploading a local host file requires confirm=true because it can move local data into a remote UiPath bucket.',
+        );
+      }
+
+      assertLocalFilePathAllowed(localFilePath);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              await deps.resourcesApi.uploadBucketFile(
+                bucketId,
+                localFilePath,
+                { folderKey },
+                { targetPath, contentType, expiryInMinutes },
+              ),
+              null,
+              2,
             ),
-            null,
-            2,
-          ),
-        },
-      ],
-    }),
+          },
+        ],
+      };
+    },
   );
 
   server.registerTool(

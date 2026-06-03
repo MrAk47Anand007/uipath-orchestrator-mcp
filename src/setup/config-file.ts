@@ -2,6 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import {
+  createSecureStorage,
+  type SecureStorage,
+} from './secure-storage.js';
 
 export function resolveConfigDirectory(
   source: Record<string, string | undefined> = process.env,
@@ -21,6 +25,22 @@ export function resolveConfigPath(
   return (
     source.UIPATH_CONFIG_PATH ??
     join(resolveConfigDirectory(source), 'config.json')
+  );
+}
+
+export function resolveServiceSecretPath(
+  source: Record<string, string | undefined> = process.env,
+) {
+  if (source.UIPATH_SERVICE_SECRET_PATH) {
+    return source.UIPATH_SERVICE_SECRET_PATH;
+  }
+
+  if (source.UIPATH_CONFIG_PATH) {
+    return join(dirname(source.UIPATH_CONFIG_PATH), 'service-secret.dat');
+  }
+
+  return (
+    join(resolveConfigDirectory(source), 'service-secret.dat')
   );
 }
 
@@ -100,4 +120,30 @@ export async function writePersistedConfig(
   );
 
   await writeFile(path, `${JSON.stringify(nextValues, null, 2)}\n`, 'utf8');
+}
+
+export function readPersistedServiceSecretSync(
+  path: string,
+  secureStorage: SecureStorage = createSecureStorage(),
+) {
+  if (!existsSync(path)) {
+    return undefined;
+  }
+
+  const sealed = readFileSync(path, 'utf8').trim();
+
+  if (!sealed) {
+    return undefined;
+  }
+
+  return secureStorage.unsealSync(sealed);
+}
+
+export async function writePersistedServiceSecret(
+  path: string,
+  secret: string,
+  secureStorage: SecureStorage = createSecureStorage(),
+) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${secureStorage.sealSync(secret)}\n`, 'utf8');
 }

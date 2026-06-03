@@ -26,8 +26,11 @@ import { parseEnvContent, upsertEnvContent } from './setup/env-file.js';
 import {
   readPersistedConfig,
   resolveConfigPath,
+  resolveServiceSecretPath,
+  writePersistedServiceSecret,
   writePersistedConfig,
 } from './setup/config-file.js';
+import { createSecureStorage } from './setup/secure-storage.js';
 import {
   buildDoctorAdvice,
   formatDoctorReport,
@@ -328,7 +331,6 @@ export async function runInitCommand(
       current.UIPATH_INTERACTIVE_REDIRECT_URL ??
       'http://127.0.0.1:8787/callback',
     UIPATH_CLIENT_ID: serviceClientId,
-    UIPATH_CLIENT_SECRET: serviceClientSecret,
   });
 
   const persistedValues: Record<string, string | undefined> = {
@@ -351,7 +353,6 @@ export async function runInitCommand(
       current.UIPATH_INTERACTIVE_REDIRECT_URL ??
       'http://127.0.0.1:8787/callback',
     UIPATH_CLIENT_ID: serviceClientId,
-    UIPATH_CLIENT_SECRET: serviceClientSecret,
   };
 
   const configPath =
@@ -364,6 +365,17 @@ export async function runInitCommand(
     ...persistedConfig.values,
     ...persistedValues,
   });
+
+  if (authMode === 'service' && serviceClientSecret) {
+    await writePersistedServiceSecret(
+      resolveServiceSecretPath({
+        ...process.env,
+        UIPATH_CONFIG_PATH: dependencies.configPath,
+      }),
+      serviceClientSecret,
+      createSecureStorage(),
+    );
+  }
 
   if (dependencies.envPath) {
     await writeFile(

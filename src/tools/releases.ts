@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { assertLocalFilePathAllowed } from '../setup/local-path-policy.js';
 
 type ReleaseToolsDeps = {
   releasesApi: {
@@ -180,10 +181,15 @@ export function registerReleaseTools(
       description: 'Delete a UiPath release by numeric id.',
       inputSchema: z.object({
         releaseId: z.number().int().positive(),
+        confirm: z.boolean().default(false),
         folderKey: z.uuid().optional(),
       }),
     },
-    async ({ releaseId, folderKey }) => {
+    async ({ releaseId, confirm, folderKey }) => {
+      if (!confirm) {
+        throw new Error('Deleting a release requires confirm=true.');
+      }
+
       await deps.releasesApi.deleteRelease(releaseId, { folderKey });
       return {
         content: [{ type: 'text', text: `Deleted release ${releaseId}.` }],
@@ -198,26 +204,37 @@ export function registerReleaseTools(
         'Upload a local UiPath .nupkg process package from the MCP host machine.',
       inputSchema: z.object({
         localFilePath: z.string().min(1),
+        confirm: z.boolean().default(false),
         folderKey: z.uuid().optional(),
         feedId: z.string().uuid().optional(),
       }),
     },
-    async ({ localFilePath, folderKey, feedId }) => ({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            await deps.releasesApi.uploadProcessPackage(
-              localFilePath,
-              { folderKey },
-              { feedId },
+    async ({ localFilePath, confirm, folderKey, feedId }) => {
+      if (!confirm) {
+        throw new Error(
+          'Uploading a local process package requires confirm=true because it reads a local host file.',
+        );
+      }
+
+      assertLocalFilePathAllowed(localFilePath);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              await deps.releasesApi.uploadProcessPackage(
+                localFilePath,
+                { folderKey },
+                { feedId },
+              ),
+              null,
+              2,
             ),
-            null,
-            2,
-          ),
-        },
-      ],
-    }),
+          },
+        ],
+      };
+    },
   );
 
   server.registerTool(
@@ -226,11 +243,16 @@ export function registerReleaseTools(
       description: 'Delete a UiPath process package by process key.',
       inputSchema: z.object({
         processKey: z.string().min(1),
+        confirm: z.boolean().default(false),
         folderKey: z.uuid().optional(),
         feedId: z.string().uuid().optional(),
       }),
     },
-    async ({ processKey, folderKey, feedId }) => {
+    async ({ processKey, confirm, folderKey, feedId }) => {
+      if (!confirm) {
+        throw new Error('Deleting a process package requires confirm=true.');
+      }
+
       await deps.releasesApi.deleteProcessPackage(
         processKey,
         { folderKey },

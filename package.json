@@ -1,11 +1,42 @@
 {
-  "name": "uipath-orchestrator-mcp-server",
+  "name": "uipath-orchestrator-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "A package-first MCP server for UiPath Orchestrator that lets AI agents run jobs, manage queues, inspect logs, and handle admin workflows through natural language.",
+  "keywords": [
+    "uipath",
+    "orchestrator",
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "rpa",
+    "automation"
+  ],
+  "license": "MIT",
   "type": "module",
+  "main": "dist/src/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "bin": {
     "uipath-orchestrator-mcp": "dist/src/index.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrAk47Anand007/uipath-orchestrator-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MrAk47Anand007/uipath-orchestrator-mcp/issues"
+  },
+  "homepage": "https://github.com/MrAk47Anand007/uipath-orchestrator-mcp#readme",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
@@ -16,7 +47,8 @@
     "logout": "tsx src/index.ts logout",
     "whoami": "tsx src/index.ts whoami",
     "test": "vitest run",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

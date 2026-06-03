@@ -1,7 +1,15 @@
 import { z } from 'zod';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { readPersistedConfigSync } from './setup/config-file.js';
+import {
+  readPersistedConfigSync,
+  readPersistedServiceSecretSync,
+  resolveServiceSecretPath,
+} from './setup/config-file.js';
+import {
+  createSecureStorage,
+  type SecureStorage,
+} from './setup/secure-storage.js';
 
 const envSchema = z.object({
   UIPATH_BASE_URL: z.url(),
@@ -75,7 +83,10 @@ function resolveAuthStoragePath(source: Record<string, string | undefined>) {
 
 export function loadConfig(
   source: Record<string, string | undefined> = process.env,
-  options: { includePersistedConfig?: boolean } = {},
+  options: {
+    includePersistedConfig?: boolean;
+    secureStorage?: SecureStorage;
+  } = {},
 ): AppConfig {
   const shouldIncludePersistedConfig =
     options.includePersistedConfig ?? source === process.env;
@@ -86,7 +97,22 @@ export function loadConfig(
           ...source,
         }
       : source;
-  const env = envSchema.parse(mergedSource);
+  const secureStorage = options.secureStorage ?? createSecureStorage();
+  const shouldReadPersistedSecret =
+    shouldIncludePersistedConfig ||
+    Boolean(mergedSource.UIPATH_CONFIG_PATH || mergedSource.UIPATH_SERVICE_SECRET_PATH);
+  const persistedClientSecret =
+    mergedSource.UIPATH_CLIENT_SECRET ??
+    (shouldReadPersistedSecret
+      ? readPersistedServiceSecretSync(
+          resolveServiceSecretPath(mergedSource),
+          secureStorage,
+        )
+      : undefined);
+  const env = envSchema.parse({
+    ...mergedSource,
+    UIPATH_CLIENT_SECRET: persistedClientSecret,
+  });
   const baseUrl = new URL(env.UIPATH_BASE_URL);
 
   if (!baseUrl.pathname.endsWith('/')) {

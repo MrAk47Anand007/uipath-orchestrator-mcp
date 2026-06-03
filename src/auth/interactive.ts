@@ -3,6 +3,11 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { dirname } from 'node:path';
 import type { AccessTokenProvider } from '../orchestrator/auth.js';
+import {
+  createSecureStorage,
+  type SecureStorage,
+} from '../setup/secure-storage.js';
+export { createTestSecureStorage } from '../setup/secure-storage.js';
 
 type TokenEndpointResponse = {
   access_token: string;
@@ -24,6 +29,14 @@ export type InteractiveSession = {
 };
 
 export type StoredInteractiveSession = InteractiveSession;
+
+type StoredInteractiveSessionEnvelope =
+  | StoredInteractiveSession
+  | {
+      version: 1;
+      kind: 'secure';
+      payload: string;
+    };
 
 function toBase64Url(value: Buffer) {
   return value
@@ -161,15 +174,46 @@ export async function refreshInteractiveSession(config: {
 export async function saveInteractiveSession(
   storagePath: string,
   session: StoredInteractiveSession,
+  secureStorage: SecureStorage = createSecureStorage(),
 ) {
   await mkdir(dirname(storagePath), { recursive: true });
-  await writeFile(storagePath, JSON.stringify(session, null, 2), 'utf8');
+  await writeFile(
+    storagePath,
+    JSON.stringify(
+      {
+        version: 1,
+        kind: 'secure',
+        payload: secureStorage.sealSync(JSON.stringify(session)),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
 }
 
-export async function loadInteractiveSession(storagePath: string) {
+export async function loadInteractiveSession(
+  storagePath: string,
+  secureStorage: SecureStorage = createSecureStorage(),
+) {
   try {
     const raw = await readFile(storagePath, 'utf8');
-    return JSON.parse(raw) as StoredInteractiveSession;
+    const parsed = JSON.parse(raw) as StoredInteractiveSessionEnvelope;
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'kind' in parsed &&
+      parsed.kind === 'secure' &&
+      'payload' in parsed &&
+      typeof parsed.payload === 'string'
+    ) {
+      return JSON.parse(
+        secureStorage.unsealSync(parsed.payload),
+      ) as StoredInteractiveSession;
+    }
+
+    return parsed as StoredInteractiveSession;
   } catch (error) {
     if (
       error &&
@@ -274,11 +318,13 @@ export function createInteractiveTokenProvider(config: {
   tokenUrl: URL;
   storagePath: string;
   clientId: string;
+  secureStorage?: SecureStorage;
 }): AccessTokenProvider {
   let cached: StoredInteractiveSession | undefined;
+  const secureStorage = config.secureStorage ?? createSecureStorage();
 
   return async function getAccessToken() {
-    cached ??= await loadInteractiveSession(config.storagePath);
+    cached ??= await loadInteractiveSession(config.storagePath, secureStorage);
 
     if (!cached) {
       throw new Error(
@@ -307,7 +353,7 @@ export function createInteractiveTokenProvider(config: {
       },
     });
 
-    await saveInteractiveSession(config.storagePath, cached);
+    await saveInteractiveSession(config.storagePath, cached, secureStorage);
     return cached.accessToken;
   };
 }

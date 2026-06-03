@@ -85,13 +85,21 @@ function extractAssetValue(asset: Record<string, unknown> | null) {
     return null;
   }
 
+  if (asset.ValueType === 'Secret') {
+    return {
+      name: asset.Name,
+      valueType: asset.ValueType,
+      redacted: true,
+      value: '[REDACTED]',
+    };
+  }
+
   return {
     name: asset.Name,
     valueType: asset.ValueType,
     stringValue: asset.StringValue,
     boolValue: asset.BoolValue,
     intValue: asset.IntValue,
-    secretValue: asset.SecretValue,
     value:
       asset.ValueType === 'Text'
         ? asset.StringValue
@@ -99,7 +107,7 @@ function extractAssetValue(asset: Record<string, unknown> | null) {
           ? asset.BoolValue
           : asset.ValueType === 'Integer'
             ? asset.IntValue
-            : asset.SecretValue,
+            : undefined,
   };
 }
 
