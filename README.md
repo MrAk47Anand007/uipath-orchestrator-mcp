@@ -1,258 +1,52 @@
 # UiPath Orchestrator MCP Server
 
-Expose UiPath Orchestrator as MCP tools so Claude, ChatGPT, Codex, and other AI agents can run jobs, manage queues, inspect logs, work with assets and buckets, monitor robots and runtimes, and handle admin access tasks through natural language.
+`uipath-orchestrator-mcp` is a standalone MCP server for UiPath Orchestrator.
 
-This project bridges deterministic RPA with agentic AI. The LLM decides what to do, the MCP server translates that intent into safe UiPath Orchestrator actions, and UiPath executes the real automation.
+It exposes common Orchestrator operations as MCP tools so an MCP client such as Claude Desktop, Codex, or ChatGPT can:
 
-## Why this exists
+- start and monitor jobs
+- work with queues, assets, and storage buckets
+- inspect logs and operational status
+- manage schedules, releases, and webhooks
+- handle selected admin and access-management tasks
 
-UiPath already gives strong automation execution. MCP makes that execution layer callable by AI agents.
+## What this project is
 
-That means an agent can do things like:
+This package is an MCP server, not a UiPath project generator and not a replacement for UiPath CLI skills.
 
-- start a UiPath process with input arguments
-- check if a robot or runtime is available
-- inspect failed queue items
-- fetch execution logs for a job
-- upload a file into a storage bucket
-- create or pause a schedule
-- inspect roles, users, and folder permissions
+Use it when you want an MCP client to call UiPath Orchestrator directly through a package you can install and run.
 
-Instead of building a custom integration for every AI workflow, you expose Orchestrator once as a reusable tool surface.
+## Current state
 
-## Current status
+This package has been exercised against a real UiPath Cloud tenant.
 
-This repo is already live-tested against a real UiPath Cloud tenant.
+- package-first CLI onboarding is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
+- service auth and interactive PKCE auth are both supported
+- the package is published as `uipath-orchestrator-mcp`
+- core runtime, resource, scheduling, deployment, and admin surfaces are implemented
 
-- `132` MCP tools are registered today
-- service auth and interactive PKCE auth both work
-- onboarding CLI is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
-- core jobs, queues, logs, buckets, schedules, releases, roles, permissions, machines, and runtimes are implemented
-- borrowed operator-friendly tools are now live-smoked too: dashboard summary, running/faulted jobs, error logs, asset value lookup, bulk queue add, and direct bucket file read
-- `uipath_health_check` works as a connectivity probe in this tenant, but the UiPath status endpoint currently returns an empty body
-- `uipath_resume_job` is implemented and tested, but live proof still depends on having a suspended job available in the tenant
-- calendar `exists/create/get/update/delete` are live-tested; `uipath_list_calendars` still returns a UiPath-side `500` in this tenant
+## Supported areas
 
-## What the MCP can do
+The MCP currently includes tools across these areas:
 
-### Folder and discovery
+- folders and discovery
+- jobs and execution state
+- logs and diagnostics
+- queues and queue item operations
+- assets and storage buckets
+- schedules and job triggers
+- releases and process package management
+- robots, machines, sessions, and runtimes
+- tasks and human-in-the-loop operations
+- webhooks
+- audit logs and alerts
+- users, roles, and folder permissions
 
-- `uipath_list_folders`
-- `uipath_search_folders`
-- `uipath_list_processes`
-- `uipath_list_releases`
-- `uipath_get_release`
-
-### Jobs and execution
-
-- `uipath_start_job`
-- `uipath_stop_job`
-- `uipath_restart_job`
-- `uipath_resume_job`
-- `uipath_get_job_details`
-- `uipath_get_jobs_stats`
-- `uipath_get_running_jobs`
-- `uipath_get_faulted_jobs`
-- `uipath_list_execution_media`
-
-### Job triggers
-
-- `uipath_list_job_triggers`
-- `uipath_get_job_triggers_by_job_key`
-- `uipath_get_job_trigger_wait_events`
-- `uipath_create_external_job_trigger`
-- `uipath_get_job_trigger_payload`
-- `uipath_deliver_job_trigger_payload`
-
-### Logs and diagnostics
-
-- `uipath_health_check`
-- `uipath_dashboard_summary`
-- `uipath_list_robot_logs`
-- `uipath_get_robot_log_total_count`
-- `uipath_get_error_logs`
-- `uipath_get_status`
-
-### Alerts
-
-- `uipath_list_alerts`
-- `uipath_get_unread_alert_count`
-- `uipath_mark_alerts_as_read`
-- `uipath_raise_process_alert`
-
-### Audit logs
-
-- `uipath_list_audit_logs`
-- `uipath_export_audit_logs`
-- `uipath_get_audit_log_details`
-
-### Calendars
-
-- `uipath_list_calendars`
-- `uipath_get_calendar`
-- `uipath_create_calendar`
-- `uipath_update_calendar`
-- `uipath_delete_calendar`
-- `uipath_calendar_exists`
-
-### Queues
-
-- `uipath_create_queue_definition`
-- `uipath_get_queue_definition`
-- `uipath_get_queue_definition_by_key`
-- `uipath_list_queue_definitions`
-- `uipath_update_queue_definition`
-- `uipath_delete_queue_definition`
-- `uipath_list_queue_items`
-- `uipath_add_queue_item`
-- `uipath_add_queue_items_bulk`
-- `uipath_get_queue_item_processing_history`
-- `uipath_list_queue_item_comments`
-- `uipath_create_queue_item_comment`
-- `uipath_update_queue_item_comment`
-- `uipath_delete_queue_item_comment`
-- `uipath_get_queue_item_comments_history`
-- `uipath_list_queue_item_events`
-- `uipath_get_queue_item_events_history`
-- `uipath_get_queues_processing_status`
-- `uipath_get_queue_processing_records`
-- `uipath_set_queue_item_progress`
-
-### Robots, machines, and runtimes
-
-- `uipath_list_robot_sessions`
-- `uipath_list_robots`
-- `uipath_get_robot_stats`
-- `uipath_list_machines`
-- `uipath_get_machine`
-- `uipath_get_assigned_machines`
-- `uipath_get_folder_runtimes`
-- `uipath_get_machine_session_runtimes`
-- `uipath_get_folder_machine_session_runtimes`
-- `uipath_toggle_robot_enabled_status`
-- `uipath_delete_inactive_unattended_sessions`
-- `uipath_update_machines_to_folder_associations`
-
-### Assets and storage buckets
-
-- `uipath_list_assets`
-- `uipath_get_asset_by_name`
-- `uipath_get_asset_value`
-- `uipath_create_asset`
-- `uipath_update_asset`
-- `uipath_list_buckets`
-- `uipath_list_bucket_files`
-- `uipath_get_bucket_read_uri`
-- `uipath_read_bucket_file`
-- `uipath_upload_bucket_file`
-- `uipath_delete_bucket_file`
-
-### Schedules and triggers
-
-- `uipath_list_schedules`
-- `uipath_create_schedule`
-- `uipath_set_schedule_enabled`
-- `uipath_delete_schedule`
-
-### Tasks and human-in-the-loop
-
-- `uipath_list_tasks`
-- `uipath_get_task`
-- `uipath_get_task_by_key`
-- `uipath_list_tasks_across_folders`
-- `uipath_get_task_permissions`
-- `uipath_get_task_users`
-- `uipath_create_generic_task`
-- `uipath_get_generic_task_data`
-- `uipath_save_generic_task_data`
-- `uipath_complete_generic_task`
-- `uipath_save_and_reassign_generic_task`
-- `uipath_list_task_notes`
-- `uipath_create_task_note`
-- `uipath_list_task_activities`
-
-### Releases and packages
-
-- `uipath_create_release`
-- `uipath_update_release`
-- `uipath_delete_release`
-- `uipath_upload_process_package`
-- `uipath_delete_process_package`
-- `uipath_update_release_to_latest_package`
-- `uipath_update_release_to_specific_package`
-- `uipath_rollback_release`
-
-### Webhooks
-
-- `uipath_list_webhooks`
-- `uipath_get_webhook`
-- `uipath_list_webhook_event_types`
-- `uipath_create_webhook`
-- `uipath_update_webhook`
-- `uipath_delete_webhook`
-- `uipath_ping_webhook`
-- `uipath_trigger_custom_webhook_event`
-
-### Roles, users, and access management
-
-- `uipath_search_directory_objects`
-- `uipath_list_roles`
-- `uipath_get_users_for_role`
-- `uipath_get_role_user_ids`
-- `uipath_assign_roles_to_user`
-- `uipath_toggle_user_role`
-- `uipath_get_directory_permissions`
-- `uipath_list_folder_users`
-- `uipath_get_user_folder_roles`
-- `uipath_assign_users_to_folders`
-- `uipath_list_users`
-- `uipath_get_user`
-- `uipath_get_user_by_key`
-- `uipath_get_current_user`
-- `uipath_get_current_permissions`
-- `uipath_validate_users`
-
-## Supported auth modes
-
-This server supports both developer-friendly desktop login and enterprise-friendly service auth.
-
-### Service mode
-
-Use this for CI, shared agents, backend services, or non-interactive execution.
-
-- UiPath app type: `Confidential`
-- OAuth flow: `client_credentials`
-- primary env vars:
-  - `UIPATH_AUTH_MODE=service`
-  - `UIPATH_CLIENT_ID`
-  - `UIPATH_CLIENT_SECRET`
-
-### Interactive mode
-
-Use this for local desktop usage where a user logs in through the browser.
-
-- UiPath app type: `Non-confidential`
-- OAuth flow: `authorization_code + PKCE`
-- redirect URL:
-  - `http://127.0.0.1:8787/callback`
-- primary env vars:
-  - `UIPATH_AUTH_MODE=interactive`
-  - `UIPATH_INTERACTIVE_CLIENT_ID`
-  - `UIPATH_INTERACTIVE_REDIRECT_URL`
-
-Interactive login stores tokens locally on Windows by default at:
-
-- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\auth.json`
-
-Package-first config is stored locally on Windows by default at:
-
-- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\config.json`
-
-You can override that with `UIPATH_AUTH_STORAGE_PATH`.
+The package intentionally groups many small Orchestrator operations into MCP tools, so the exact tool count is less important than the supported surface.
 
 ## Quickstart
 
-For a developer or RPA engineer, this is the smoothest path:
+For most local users, this is the easiest path:
 
 ```bash
 npx uipath-orchestrator-mcp init
@@ -263,41 +57,75 @@ npx uipath-orchestrator-mcp serve
 
 What each command does:
 
-- `init` creates or updates your saved package config
-- `login` opens UiPath login in the browser for interactive auth
-- `doctor` validates auth, folder access, and config
+- `init` saves package config locally
+- `login` performs browser-based interactive auth
+- `doctor` checks configuration, auth, and folder readiness
 - `serve` starts the MCP server
 
-If you want service mode instead, skip `login`, set service credentials during `init`, and run:
+For service mode:
 
 ```bash
+npx uipath-orchestrator-mcp init
 npx uipath-orchestrator-mcp doctor
 npx uipath-orchestrator-mcp serve
 ```
 
+## Auth modes
+
+### Interactive mode
+
+Use interactive mode for local desktop usage.
+
+- UiPath app type: `Non-confidential`
+- OAuth flow: `authorization_code + PKCE`
+- redirect URL:
+  - `http://127.0.0.1:8787/callback`
+
+Required values:
+
+- `UIPATH_AUTH_MODE=interactive`
+- `UIPATH_INTERACTIVE_CLIENT_ID`
+- `UIPATH_INTERACTIVE_REDIRECT_URL`
+
+### Service mode
+
+Use service mode for shared agents, CI/CD, or unattended server use.
+
+- UiPath app type: `Confidential`
+- OAuth flow: `client_credentials`
+
+Required values:
+
+- `UIPATH_AUTH_MODE=service`
+- `UIPATH_CLIENT_ID`
+- `UIPATH_CLIENT_SECRET`
+
+## Local config and secret storage
+
+Normal package usage does not require editing a repo-local `.env`.
+
+By default on Windows, package config is stored under:
+
+- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\config.json`
+
+Interactive auth session data is stored under:
+
+- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\auth.json`
+
+Service secrets are stored separately from `config.json`.
+
+For contributors and repo-based development, `.env` is still supported as an override layer.
+
 ## UiPath-side setup
 
-You still need a small amount of tenant setup before the MCP can do useful work.
+Before this MCP can do useful work, you still need a small amount of UiPath setup:
 
-### For service mode
+1. Create the appropriate external app in UiPath.
+2. Add the required scopes.
+3. Grant the app or user access to the target Orchestrator folder.
+4. Run `init` and then `doctor`.
 
-1. Create a `Confidential` external app in UiPath.
-2. Add the required application scopes.
-3. Grant the app access to the target Orchestrator folder.
-4. Save the client id, client secret, base URL, and folder key through `init`.
-
-### For interactive mode
-
-1. Create a `Non-confidential` external app in UiPath.
-2. Add user scopes.
-3. Set redirect URL to `http://127.0.0.1:8787/callback`.
-4. Grant the user appropriate Orchestrator access and folder permissions.
-5. Save the interactive client id through `init`.
-6. Run `npx uipath-orchestrator-mcp login`.
-
-### Typical scopes
-
-The exact scopes depend on what you want the agent to do, but common ones include:
+Typical scopes depend on what you want the MCP to do, but common ones include:
 
 - `OR.Folders`
 - `OR.Execution`
@@ -314,39 +142,9 @@ The exact scopes depend on what you want the agent to do, but common ones includ
 - `OR.Settings`
 - `OR.Audit`
 
-Important: OAuth scopes are not enough by themselves. The app or logged-in user also needs real Orchestrator folder access.
+Scopes alone are not enough. Folder access still matters.
 
-## Environment examples
-
-### Service mode example values
-
-```env
-UIPATH_BASE_URL=https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_
-UIPATH_ACCOUNT_LOGICAL_NAME=your-org
-UIPATH_TENANT_LOGICAL_NAME=DefaultTenant
-UIPATH_CLIENT_ID=your-service-client-id
-UIPATH_CLIENT_SECRET=your-service-client-secret
-UIPATH_FOLDER_KEY=your-folder-key
-UIPATH_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings
-UIPATH_AUTH_MODE=service
-```
-
-### Interactive mode example values
-
-```env
-UIPATH_BASE_URL=https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_
-UIPATH_ACCOUNT_LOGICAL_NAME=your-org
-UIPATH_TENANT_LOGICAL_NAME=DefaultTenant
-UIPATH_FOLDER_KEY=your-folder-key
-UIPATH_AUTH_MODE=interactive
-UIPATH_INTERACTIVE_CLIENT_ID=your-interactive-client-id
-UIPATH_INTERACTIVE_REDIRECT_URL=http://127.0.0.1:8787/callback
-UIPATH_INTERACTIVE_OAUTH_SCOPES=OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings offline_access
-```
-
-These examples are still useful for contributors and repo-based development, but normal package usage can rely on the saved `config.json` instead of a project `.env`.
-
-## CLI
+## CLI commands
 
 ```bash
 npx uipath-orchestrator-mcp init
@@ -357,41 +155,9 @@ npx uipath-orchestrator-mcp serve
 npx uipath-orchestrator-mcp logout
 ```
 
-## Local development
+## MCP client example
 
-```bash
-npm install
-npm run build
-npm run serve
-```
-
-For development:
-
-```bash
-npm run dev
-```
-
-For verification:
-
-```bash
-npm test
-npm run build
-```
-
-If you are contributing inside the repo, these are equivalent local shortcuts:
-
-```bash
-npm run init
-npm run doctor
-npm run login
-npm run whoami
-npm run serve
-npm run logout
-```
-
-## MCP client configuration
-
-### Claude Desktop example
+Example Claude Desktop configuration:
 
 ```json
 {
@@ -403,10 +169,10 @@ npm run logout
         "UIPATH_BASE_URL": "https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_",
         "UIPATH_ACCOUNT_LOGICAL_NAME": "your-org",
         "UIPATH_TENANT_LOGICAL_NAME": "DefaultTenant",
+        "UIPATH_AUTH_MODE": "service",
         "UIPATH_CLIENT_ID": "your-client-id",
         "UIPATH_CLIENT_SECRET": "your-client-secret",
-        "UIPATH_FOLDER_KEY": "your-folder-key",
-        "UIPATH_AUTH_MODE": "service"
+        "UIPATH_FOLDER_KEY": "your-folder-key"
       }
     }
   }
@@ -415,57 +181,69 @@ npm run logout
 
 ## Example prompts
 
-These are the kinds of requests this MCP is built for:
-
-- `Run the UiPathAgentTesting process in Shared with these input arguments.`
+- `Start the UiPathAgentTesting process in Shared with these input arguments.`
 - `Show failed queue items from today.`
-- `Which robots and runtimes are available right now in Shared?`
 - `Fetch logs for the last failed job.`
 - `Upload C:\\docs\\invoice.pdf to the UiPathAgentTesting bucket.`
-- `Create a daily schedule for the release at 9 AM India time.`
-- `Find the roles assigned to anand.kale@xalta.tech.`
-- `Assign Automation User to this user in the Shared folder.`
+- `Create a daily schedule for this release at 9 AM India time.`
+- `List roles assigned to this user in Shared.`
 
-## Known gaps
+## Local development
 
-The original live-validation hold items for assets and release/package workflows are now resolved.
+```bash
+npm install
+npm test
+npm run build
+npm run serve
+```
 
-At this point, the main remaining work is product polish rather than missing core behavior:
+Useful local shortcuts:
 
-- `uipath_list_calendars` still returns `500 Internal Server Error` from UiPath in this tenant, even though calendar create/get/update/delete work live
-- `uipath_health_check` currently acts as a connectivity check because `/api/Status/Get` returns an empty body in this tenant
-- `uipath_resume_job` still needs a live suspended-job scenario for end-to-end tenant validation
-- npm publish and package metadata cleanup
-- demo GIFs and launch material
-- broader real-world testing across more UiPath tenant shapes and permission models
+```bash
+npm run init
+npm run doctor
+npm run login
+npm run whoami
+npm run serve
+npm run logout
+```
+
+## Known limitations
+
+These are the main known limitations today:
+
+- `uipath_list_calendars` still returns `500 Internal Server Error` in the tenant used for live validation, even though calendar create/get/update/delete work
+- `uipath_health_check` currently behaves more like a connectivity probe because the UiPath status endpoint returns an empty body in that tenant
+- `uipath_resume_job` is implemented and tested, but live validation still depends on having a suspended job available
+- wider testing across more tenant configurations is still useful
 
 ## Safety notes
 
-Some tools can change production-like automation state. The more sensitive ones already require explicit confirmation in the MCP layer, including:
+Some tools change Orchestrator state and are intentionally guarded.
 
-- role assignment and role toggling
+Examples include:
+
+- role changes
 - folder-user assignment
-- robot enable/disable
-- inactive session cleanup
-- folder-machine association changes
+- release deletion
+- process package deletion
+- local file uploads from the MCP host machine
 
-That helps keep the server useful for agents without making it reckless.
+For local host file operations, this package now expects confirmation and enforces allowed local path checks.
 
-## Project direction
+## Security notes
 
-This repo is moving toward a complete AI control plane for UiPath Orchestrator:
+- keep `.env`, local config, and auth/session storage out of git
+- use `doctor` to validate setup before connecting an MCP client
+- prefer least-privilege scopes and folder access where possible
 
-- deterministic bot execution
-- operational visibility
-- queue and asset orchestration
-- deployment and scheduling controls
-- admin and access workflows
+## When not to use this package
 
-That makes it useful not only for demos, but also for real enterprise automation operations.
+If you already rely on the official UiPath CLI skill catalog for local agent workflows, some platform operations may already be available through `uip`.
 
-## Notes
+This package is most useful when you specifically want:
 
-- keep local `.env`, `config.json`, and auth storage out of git
-- folder access matters as much as scopes
-- `doctor` is the fastest way to understand what is missing in a fresh setup
-- service-mode apps may not always return browseable folder lists even when the configured folder key works; the CLI handles that more gracefully now
+- a standalone MCP server
+- package-based MCP installation
+- direct Orchestrator actions from an MCP client
+- a reusable Orchestrator tool surface outside the UiPath skill system
