@@ -3,6 +3,7 @@ import { loadConfig, type AppConfig } from './config.js';
 import { createAlertsApi } from './orchestrator/alerts.js';
 import { createAuditApi } from './orchestrator/audit.js';
 import { createInteractiveTokenProvider } from './auth/interactive.js';
+import { createUipCliTokenProvider } from './auth/uip-cli.js';
 import { createAdminApi } from './orchestrator/admin.js';
 import { createCalendarsApi } from './orchestrator/calendars.js';
 import { createOrchestratorClient } from './orchestrator/client.js';
@@ -46,7 +47,13 @@ export function buildDependenciesFromConfig(config: AppConfig) {
           storagePath: config.auth.storagePath,
           clientId: config.auth.interactive!.clientId,
         })
-      : undefined;
+      : config.auth.mode === 'uip'
+        ? createUipCliTokenProvider({
+            authPath: config.auth.uip!.authPath,
+            tokenUrl: config.auth.uip!.tokenUrl,
+          })
+        : undefined;
+
   const client =
     getAccessToken !== undefined
       ? createOrchestratorClient({

@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { platform } from 'node:os';
+import { join, resolve } from 'node:path';
+import { homedir, platform } from 'node:os';
 import {
   buildDependenciesFromConfig,
   createServer,
@@ -22,6 +22,7 @@ import {
   saveInteractiveSession,
 } from './auth/interactive.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createTokenProvider } from './orchestrator/auth.js';
 import { parseEnvContent, upsertEnvContent } from './setup/env-file.js';
 import {
   readPersistedConfig,
@@ -169,67 +170,340 @@ export async function openUrlInBrowser(url: URL) {
   }).unref();
 }
 
+/**
+ * Built-in OAuth client registered by UiPath for their CLI tooling.
+ * This is a public client (no secret) — safe to embed and reuse
+ * in any tool that interacts with UiPath Cloud on behalf of a user.
+ */
+const UIPATH_BUILTIN_CLIENT_ID = '36dea5b8-e8bb-423d-8e7b-c808df8f1c00';
+
+/**
+ * The redirect URI that UiPath's identity server already has allow-listed
+ * for the built-in CLI client. Port 8104 is the UiPath Assistant's OIDC port;
+ * when no Assistant is running, our own local server listens on it instead.
+ */
+const UIPATH_BUILTIN_REDIRECT_URL = new URL('http://localhost:8104/oidc/login');
+
+/** Scopes that give full Orchestrator access plus a refresh token. */
+/**
+ * Scopes that the built-in UiPath CLI client ID actually has permission to request.
+ * These are service-level audience scopes — NOT the OR.* resource scopes, which
+ * are only valid for custom external apps registered in Automation Cloud.
+ * Taken directly from the URL produced by `uip login`.
+ */
+const UIPATH_BUILTIN_SCOPES = [
+  'offline_access',
+  'OrchestratorApiUserAccess',
+  'ProcessMining',
+  'StudioWebBackend',
+  'IdentityServerApi',
+  'ConnectionService',
+  'DataService',
+  'DataServiceApiUserAccess',
+  'DocumentUnderstanding',
+  'EnterpriseContextService',
+  'Directory',
+  'JamJamApi',
+  'LLMGateway',
+  'LLMOps',
+  'OMS',
+  'RCS.FolderAuthorization',
+  'RCS.TagsManagement',
+  'TestmanagerApiUserAccess',
+  'AutomationSolutions',
+  'StudioWebTypeCacheService',
+  'Docs.GPT.Search',
+  'Insights',
+].join(' ');
+
+/** Decode a JWT payload without verifying the signature. */
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    const [, payload] = token.split('.');
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * After obtaining a token, resolve the tenant logical name from the
+ * UiPath identity API (the JWT only carries the tenant ID, not the name).
+ */
+async function resolveTenantName(
+  accessToken: string,
+  organizationName: string,
+  tenantId: string,
+): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://cloud.uipath.com/${organizationName}/identity_/api/account/userinfo`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) return tenantId;                   // fall back to ID if API fails
+    const data = (await res.json()) as {
+      tenants?: Array<{ id: string; name: string }>;
+    };
+    return data.tenants?.find((t) => t.id === tenantId)?.name ?? tenantId;
+  } catch {
+    return tenantId;
+  }
+}
+
 export async function runLoginCommand(
   config: AppConfig,
   dependencies: {
     openBrowser?: (url: URL) => Promise<void>;
   } = {},
 ) {
-  const interactive = config.auth.interactive;
+  // ── Determine which client + redirect to use ───────────────────────────────
+  // If the user has configured their own interactive app, use that.
+  // Otherwise fall back to the built-in UiPath CLI public client —
+  // which requires zero pre-configuration and works exactly like `uip login`.
+  const clientId   = config.auth.interactive?.clientId   ?? UIPATH_BUILTIN_CLIENT_ID;
+  const redirectUrl = config.auth.interactive?.redirectUrl ?? UIPATH_BUILTIN_REDIRECT_URL;
+  const oauthScopes = config.auth.interactive?.oauthScopes ?? UIPATH_BUILTIN_SCOPES;
 
-  if (!interactive) {
-    throw new Error(
-      'Interactive auth is not configured. Set UIPATH_INTERACTIVE_CLIENT_ID first.',
-    );
-  }
+  // Token URL: prefer configured, otherwise use the generic cloud endpoint
+  // (we'll refine it once we know the org from the returned token).
+  const genericTokenUrl = new URL('https://cloud.uipath.com/identity_/connect/token');
+  const tokenUrl = config.auth.interactive?.tokenUrl ?? genericTokenUrl;
 
+  // Authorize URL: prefer configured, otherwise use the generic cloud endpoint.
+  const genericAuthorizeUrl = new URL('https://cloud.uipath.com/identity_/connect/authorize');
+  const authorizeUrl = config.auth.interactive?.authorizeUrl ?? genericAuthorizeUrl;
+
+  // ── Build the PKCE authorize URL ───────────────────────────────────────────
   const { codeVerifier, codeChallenge } = await createPkcePair();
   const state = createOAuthState();
-  const authorizeUrl = buildAuthorizeUrl({
-    authorizeUrl: interactive.authorizeUrl,
-    clientId: interactive.clientId,
-    redirectUrl: interactive.redirectUrl,
-    oauthScopes: interactive.oauthScopes,
+  const loginUrl = buildAuthorizeUrl({
+    authorizeUrl,
+    clientId,
+    redirectUrl,
+    oauthScopes,
     codeChallenge,
     state,
   });
 
+  // ── Start local callback server & open browser ─────────────────────────────
+  console.log('→ Opening UiPath login in your browser...');
+  console.log('  If already signed in, it will complete automatically.');
+
   const waitForCallback = listenForAuthorizationCode({
-    redirectUrl: interactive.redirectUrl,
+    redirectUrl,
     expectedState: state,
   });
 
-  console.log(`Opening UiPath login in your browser: ${authorizeUrl}`);
-  await (dependencies.openBrowser ?? openUrlInBrowser)(authorizeUrl);
+  await (dependencies.openBrowser ?? openUrlInBrowser)(loginUrl);
 
+  // ── Exchange code for tokens ───────────────────────────────────────────────
   const code = await waitForCallback;
   const token = await exchangeAuthorizationCode({
-    tokenUrl: interactive.tokenUrl,
-    clientId: interactive.clientId,
+    tokenUrl,
+    clientId,
     code,
-    redirectUrl: interactive.redirectUrl,
+    redirectUrl,
     codeVerifier,
   });
 
+  // ── Resolve org + tenant from the JWT (no extra config needed) ────────────
+  const payload = decodeJwtPayload(token.accessToken);
+  const orgIdFromToken   = typeof payload['prt_id'] === 'string' ? payload['prt_id'] : '';
+  const orgNameFromToken = typeof payload['prt_lgn'] === 'string'
+    ? payload['prt_lgn']
+    : config.accountLogicalName;
+
+  // Prefer explicitly configured values; fall back to what the token tells us.
+  const accountLogicalName = config.accountLogicalName || orgNameFromToken;
+  const tenantLogicalName  =
+    config.tenantLogicalName ||
+    (await resolveTenantName(token.accessToken, accountLogicalName, config.tenantLogicalName));
+
+  // ── Save session ───────────────────────────────────────────────────────────
   await saveInteractiveSession(config.auth.storagePath, {
-    accessToken: token.accessToken,
-    refreshToken: token.refreshToken,
-    expiresAt: token.expiresAt,
-    tokenType: token.tokenType,
-    scope: token.scope,
-    accountLogicalName: config.accountLogicalName,
-    tenantLogicalName: config.tenantLogicalName,
-    clientId: interactive.clientId,
+    accessToken:         token.accessToken,
+    refreshToken:        token.refreshToken,
+    expiresAt:           token.expiresAt,
+    tokenType:           token.tokenType,
+    scope:               token.scope,
+    accountLogicalName,
+    tenantLogicalName,
+    clientId,
   });
 
-  console.log(
-    `UiPath login saved to ${config.auth.storagePath}. Token expires at ${token.expiresAt}.`,
-  );
+  console.log('');
+  console.log('✓ Login successful!');
+  console.log(`  Organization : ${accountLogicalName}`);
+  console.log(`  Tenant       : ${tenantLogicalName}`);
+  console.log(`  Expires      : ${token.expiresAt}`);
+  console.log(`  Session      : ${config.auth.storagePath}`);
+  console.log('');
+  console.log(`Run \`${formatCommand('doctor')}\` to verify folder access.`);
+  void orgIdFromToken; // suppress unused-var warning
 }
 
-export async function runLogoutCommand(config: AppConfig) {
-  await clearInteractiveSession(config.auth.storagePath);
-  console.log(`Removed interactive UiPath session from ${config.auth.storagePath}.`);
+/**
+ * Standalone browser login — zero pre-configuration required.
+ *
+ * Works exactly like `uip login`:
+ *   npx uipath-orchestrator-mcp login
+ *
+ * Uses the built-in UiPath public client ID + port 8104 redirect.
+ * If the user is already signed into cloud.uipath.com in their browser,
+ * the auth flow completes automatically with no manual input.
+ */
+export async function runBrowserLoginCommand(
+  dependencies: {
+    openBrowser?: (url: URL) => Promise<void>;
+    configPath?: string;
+  } = {},
+) {
+  const { codeVerifier, codeChallenge } = await createPkcePair();
+  const state = createOAuthState();
+
+  const loginUrl = buildAuthorizeUrl({
+    authorizeUrl: new URL('https://cloud.uipath.com/identity_/connect/authorize'),
+    clientId:     UIPATH_BUILTIN_CLIENT_ID,
+    redirectUrl:  UIPATH_BUILTIN_REDIRECT_URL,
+    oauthScopes:  UIPATH_BUILTIN_SCOPES,
+    codeChallenge,
+    state,
+  });
+
+  console.log('→ Opening UiPath login in your browser...');
+  console.log('  If you are already signed in, it will complete automatically.\n');
+
+  const waitForCallback = listenForAuthorizationCode({
+    redirectUrl:   UIPATH_BUILTIN_REDIRECT_URL,
+    expectedState: state,
+  });
+
+  await (dependencies.openBrowser ?? openUrlInBrowser)(loginUrl);
+
+  const code = await waitForCallback;
+
+  const token = await exchangeAuthorizationCode({
+    tokenUrl:    new URL('https://cloud.uipath.com/identity_/connect/token'),
+    clientId:    UIPATH_BUILTIN_CLIENT_ID,
+    code,
+    redirectUrl: UIPATH_BUILTIN_REDIRECT_URL,
+    codeVerifier,
+  });
+
+  // Decode org + tenant from the JWT — no extra API call needed for the org name
+  const payload = decodeJwtPayload(token.accessToken);
+  const accountLogicalName =
+    (typeof payload['prt_lgn'] === 'string' ? payload['prt_lgn'] : '') ||
+    (typeof payload['prt_id']  === 'string' ? payload['prt_id']  : '');
+
+  // Resolve the tenant logical name from the identity API
+  const tenantId = typeof payload['tid'] === 'string' ? payload['tid'] : '';
+  const tenantLogicalName = await resolveTenantName(
+    token.accessToken,
+    accountLogicalName,
+    tenantId,
+  );
+
+  // Persist the auth mode and session
+  const persistedConfig = await readPersistedConfig({
+    ...process.env,
+    UIPATH_CONFIG_PATH: dependencies.configPath,
+  });
+  const configPath =
+    dependencies.configPath ??
+    resolveConfigPath({ ...process.env, UIPATH_CONFIG_PATH: dependencies.configPath });
+
+  // Derive the Orchestrator base URL from org + tenant
+  const baseUrl = `https://cloud.uipath.com/${accountLogicalName}/${tenantLogicalName}/orchestrator_`;
+
+  await writePersistedConfig(configPath, {
+    ...persistedConfig.values,
+    UIPATH_BASE_URL:              baseUrl,
+    UIPATH_ACCOUNT_LOGICAL_NAME:  accountLogicalName,
+    UIPATH_TENANT_LOGICAL_NAME:   tenantLogicalName,
+    UIPATH_AUTH_MODE:             'interactive',
+    UIPATH_INTERACTIVE_CLIENT_ID: UIPATH_BUILTIN_CLIENT_ID,
+    UIPATH_INTERACTIVE_REDIRECT_URL: UIPATH_BUILTIN_REDIRECT_URL.href,
+    UIPATH_INTERACTIVE_OAUTH_SCOPES: UIPATH_BUILTIN_SCOPES,
+  });
+
+  // Derive the storage path from the saved config
+  const storagePath =
+    persistedConfig.values.UIPATH_AUTH_STORAGE_PATH ??
+    join(
+      process.env.APPDATA ?? join(homedir(), '.config'),
+      'uipath-orchestrator-mcp',
+      'auth.json',
+    );
+
+  await saveInteractiveSession(storagePath, {
+    accessToken:         token.accessToken,
+    refreshToken:        token.refreshToken,
+    expiresAt:           token.expiresAt,
+    tokenType:           token.tokenType,
+    scope:               token.scope,
+    accountLogicalName,
+    tenantLogicalName,
+    clientId:            UIPATH_BUILTIN_CLIENT_ID,
+  });
+
+  console.log('✓ Login successful!');
+  console.log(`  Organization : ${accountLogicalName}`);
+  console.log(`  Tenant       : ${tenantLogicalName}`);
+  console.log(`  Expires      : ${token.expiresAt}`);
+  console.log(`  Config saved : ${configPath}`);
+  console.log(`  Session      : ${storagePath}`);
+  console.log('');
+  console.log(`Run \`${formatCommand('doctor')}\` to verify folder access.`);
+}
+
+/**
+ * Standalone logout — zero pre-configuration required.
+ *
+ * Works exactly like `uip logout`:
+ *   npx uipath-orchestrator-mcp logout
+ *
+ * Clears the saved session file and resets the persisted auth mode
+ * so the MCP server won't try to use a stale token.
+ */
+export async function runLogoutCommand(
+  dependencies: { configPath?: string } = {},
+) {
+  const persistedConfig = await readPersistedConfig({
+    ...process.env,
+    UIPATH_CONFIG_PATH: dependencies.configPath,
+  });
+
+  // Resolve session storage path the same way login does
+  const storagePath =
+    persistedConfig.values.UIPATH_AUTH_STORAGE_PATH ??
+    join(
+      process.env.APPDATA ?? join(homedir(), '.config'),
+      'uipath-orchestrator-mcp',
+      'auth.json',
+    );
+
+  await clearInteractiveSession(storagePath);
+
+  // Reset auth-related keys in persisted config so the server
+  // doesn't attempt to start with a missing/stale session.
+  const configPath =
+    dependencies.configPath ??
+    resolveConfigPath({ ...process.env, UIPATH_CONFIG_PATH: dependencies.configPath });
+
+  const {
+    UIPATH_AUTH_MODE: _mode,
+    UIPATH_INTERACTIVE_CLIENT_ID: _cid,
+    UIPATH_INTERACTIVE_REDIRECT_URL: _rurl,
+    UIPATH_INTERACTIVE_OAUTH_SCOPES: _scopes,
+    ...remainingConfig
+  } = persistedConfig.values;
+
+  await writePersistedConfig(configPath, remainingConfig);
+
+  console.log('✓ Logged out successfully.');
+  console.log(`  Session cleared : ${storagePath}`);
+  console.log(`  Config reset    : ${configPath}`);
 }
 
 export async function runWhoAmICommand(config: AppConfig) {
@@ -585,6 +859,102 @@ export async function runDoctorCommand(
       advice,
     }),
   );
+}
+
+export async function runServiceLoginCommand(options: {
+  clientId: string;
+  clientSecret: string;
+  account?: string;
+  tenant?: string;
+  configPath?: string;
+}) {
+  // Load any already-persisted config so we can fall back for account/tenant
+  const persistedConfig = await readPersistedConfig({
+    ...process.env,
+    UIPATH_CONFIG_PATH: options.configPath,
+  });
+  const current = mergeConfigSources(persistedConfig.values, {});
+
+  const accountLogicalName =
+    options.account ??
+    current.UIPATH_ACCOUNT_LOGICAL_NAME ??
+    '';
+
+  const tenantLogicalName =
+    options.tenant ??
+    current.UIPATH_TENANT_LOGICAL_NAME ??
+    '';
+
+  if (!accountLogicalName) {
+    throw new Error(
+      'Could not determine UiPath organization. Pass --account <org-logical-name> or run `init` first.',
+    );
+  }
+
+  if (!tenantLogicalName) {
+    throw new Error(
+      'Could not determine UiPath tenant. Pass --tenant <tenant-name> or run `init` first.',
+    );
+  }
+
+  const tokenUrl = current.UIPATH_TOKEN_URL
+    ? new URL(current.UIPATH_TOKEN_URL)
+    : new URL(
+        `https://cloud.uipath.com/${accountLogicalName}/identity_/connect/token`,
+      );
+
+  const oauthScopes =
+    current.UIPATH_OAUTH_SCOPES ??
+    'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings';
+
+  console.log('→ Authenticating with Client Credentials...');
+
+  // Verify credentials by fetching a real token
+  const getToken = createTokenProvider({
+    tokenUrl,
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    oauthScopes,
+  });
+
+  const accessToken = await getToken();
+
+  if (!accessToken) {
+    throw new Error('Authentication failed: no access token returned.');
+  }
+
+  // Persist config + encrypted secret
+  const baseUrl =
+    current.UIPATH_BASE_URL ??
+    `https://cloud.uipath.com/${accountLogicalName}/${tenantLogicalName}/orchestrator_`;
+
+  const configPath =
+    options.configPath ??
+    resolveConfigPath({ ...process.env, UIPATH_CONFIG_PATH: options.configPath });
+
+  await writePersistedConfig(configPath, {
+    ...persistedConfig.values,
+    UIPATH_BASE_URL: baseUrl,
+    UIPATH_ACCOUNT_LOGICAL_NAME: accountLogicalName,
+    UIPATH_TENANT_LOGICAL_NAME: tenantLogicalName,
+    UIPATH_AUTH_MODE: 'service',
+    UIPATH_CLIENT_ID: options.clientId,
+    UIPATH_OAUTH_SCOPES: oauthScopes,
+  });
+
+  const secretPath = resolveServiceSecretPath({
+    ...process.env,
+    UIPATH_CONFIG_PATH: options.configPath,
+  });
+
+  await writePersistedServiceSecret(secretPath, options.clientSecret, createSecureStorage());
+
+  console.log(`✓ Authenticated successfully.`);
+  console.log(`  Organization : ${accountLogicalName}`);
+  console.log(`  Tenant       : ${tenantLogicalName}`);
+  console.log(`  Config saved : ${configPath}`);
+  console.log(`  Secret saved : ${secretPath} (encrypted)`);
+  console.log(`\nRun \`${formatCommand('doctor')}\` to verify folder access.`);
 }
 
 export async function runServeCommand(

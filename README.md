@@ -21,7 +21,7 @@ Use it when you want an MCP client to call UiPath Orchestrator directly through 
 This package has been exercised against a real UiPath Cloud tenant.
 
 - package-first CLI onboarding is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
-- service auth and interactive PKCE auth are both supported
+- three auth modes are supported: built-in browser login, service account, and interactive PKCE
 - the package is published as `uipath-orchestrator-mcp`
 - core runtime, resource, scheduling, deployment, and admin surfaces are implemented
 
@@ -46,86 +46,157 @@ The package intentionally groups many small Orchestrator operations into MCP too
 
 ## Quickstart
 
-For most local users, this is the easiest path:
+### Option 1 — Zero-config browser login (recommended for local use)
+
+No UiPath app registration needed. Works exactly like `uip login`.
 
 ```bash
-npx uipath-orchestrator-mcp init
 npx uipath-orchestrator-mcp login
 npx uipath-orchestrator-mcp doctor
 npx uipath-orchestrator-mcp serve
 ```
 
-What each command does:
+- `login` opens your browser. If you are already signed into UiPath Cloud, it completes automatically in about one second — no credentials to type.
+- Org, tenant, and base URL are discovered automatically from the token. Nothing to configure beforehand.
+- `doctor` verifies auth and folder access.
+- `serve` starts the MCP server.
 
-- `init` saves package config locally
-- `login` performs browser-based interactive auth
-- `doctor` checks configuration, auth, and folder readiness
-- `serve` starts the MCP server
+### Option 2 — Headless service account login (CI/CD or unattended)
 
-For service mode:
+No browser needed. Requires a UiPath External Application (confidential type).
 
 ```bash
-npx uipath-orchestrator-mcp init
+npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>
 npx uipath-orchestrator-mcp doctor
 npx uipath-orchestrator-mcp serve
 ```
 
+If org and tenant cannot be inferred from an existing config, pass them explicitly:
+
+```bash
+npx uipath-orchestrator-mcp login \
+  --client-id <id> \
+  --client-secret <secret> \
+  --account <org-logical-name> \
+  --tenant DefaultTenant
+```
+
+### Option 3 — Your own interactive app (custom external app)
+
+If you have registered your own Non-confidential external app in UiPath, set these before running `login`:
+
+```
+UIPATH_AUTH_MODE=interactive
+UIPATH_INTERACTIVE_CLIENT_ID=<your-app-client-id>
+UIPATH_INTERACTIVE_REDIRECT_URL=http://127.0.0.1:8787/callback
+UIPATH_BASE_URL=https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_
+UIPATH_ACCOUNT_LOGICAL_NAME=your-org
+UIPATH_TENANT_LOGICAL_NAME=DefaultTenant
+```
+
 ## Auth modes
 
-### Interactive mode
+### Built-in browser login (default, zero config)
 
-Use interactive mode for local desktop usage.
+The recommended path for local desktop use. Uses the same public OAuth client that the official UiPath CLI (`uip`) uses — no app registration required.
+
+- OAuth flow: `authorization_code + PKCE`
+- Redirect URI: `http://localhost:8104/oidc/login`
+- Client ID: built-in (no configuration needed)
+- Scopes: auto-selected to match UiPath CLI defaults
+- Org, tenant, and Orchestrator URL: discovered automatically from the returned token
+
+```bash
+npx uipath-orchestrator-mcp login
+```
+
+Logout clears the session and resets the saved config:
+
+```bash
+npx uipath-orchestrator-mcp logout
+```
+
+### Service mode (headless, no browser)
+
+For shared agents, CI/CD pipelines, or unattended server use.
+
+- UiPath app type: `Confidential`
+- OAuth flow: `client_credentials`
+
+```bash
+npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>
+```
+
+Credentials are encrypted and saved to disk. The MCP server uses them automatically on `serve`.
+
+Required values (resolved automatically if passed via `--account` / `--tenant`):
+
+- `UIPATH_CLIENT_ID`
+- `UIPATH_CLIENT_SECRET`
+- `UIPATH_ACCOUNT_LOGICAL_NAME`
+- `UIPATH_TENANT_LOGICAL_NAME`
+
+### Interactive mode (custom external app)
+
+Use this only if you have registered your own Non-confidential external app and need custom scopes or a different redirect URL.
 
 - UiPath app type: `Non-confidential`
 - OAuth flow: `authorization_code + PKCE`
-- redirect URL:
-  - `http://127.0.0.1:8787/callback`
 
 Required values:
 
 - `UIPATH_AUTH_MODE=interactive`
 - `UIPATH_INTERACTIVE_CLIENT_ID`
 - `UIPATH_INTERACTIVE_REDIRECT_URL`
+- `UIPATH_BASE_URL`
+- `UIPATH_ACCOUNT_LOGICAL_NAME`
+- `UIPATH_TENANT_LOGICAL_NAME`
 
-### Service mode
+## CLI commands
 
-Use service mode for shared agents, CI/CD, or unattended server use.
-
-- UiPath app type: `Confidential`
-- OAuth flow: `client_credentials`
-
-Required values:
-
-- `UIPATH_AUTH_MODE=service`
-- `UIPATH_CLIENT_ID`
-- `UIPATH_CLIENT_SECRET`
+```
+npx uipath-orchestrator-mcp login                                      # browser login, zero config
+npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>   # headless service login
+npx uipath-orchestrator-mcp logout                                     # clear session and config
+npx uipath-orchestrator-mcp doctor                                     # verify auth and folder access
+npx uipath-orchestrator-mcp whoami                                     # show current session info
+npx uipath-orchestrator-mcp serve                                      # start the MCP server
+npx uipath-orchestrator-mcp init                                       # interactive config wizard
+```
 
 ## Local config and secret storage
 
 Normal package usage does not require editing a repo-local `.env`.
 
-By default on Windows, package config is stored under:
+After `login`, everything is saved automatically:
 
-- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\config.json`
+| File | What it stores |
+|---|---|
+| `%APPDATA%\uipath-orchestrator-mcp\config.json` | org, tenant, base URL, auth mode |
+| `%APPDATA%\uipath-orchestrator-mcp\auth.json` | encrypted access + refresh token |
+| `%APPDATA%\uipath-orchestrator-mcp\service-secret.dat` | encrypted client secret (service mode) |
 
-Interactive auth session data is stored under:
+On macOS/Linux the directory is `~/.config/uipath-orchestrator-mcp/`.
 
-- `C:\Users\<you>\AppData\Roaming\uipath-orchestrator-mcp\auth.json`
-
-Service secrets are stored separately from `config.json`.
+`logout` removes both `auth.json` and the interactive auth keys from `config.json`.
 
 For contributors and repo-based development, `.env` is still supported as an override layer.
 
 ## UiPath-side setup
 
-Before this MCP can do useful work, you still need a small amount of UiPath setup:
+### Built-in browser login
 
-1. Create the appropriate external app in UiPath.
-2. Add the required scopes.
-3. Grant the app or user access to the target Orchestrator folder.
-4. Run `init` and then `doctor`.
+Nothing to set up in UiPath. The built-in client and scopes are pre-configured.
 
-Typical scopes depend on what you want the MCP to do, but common ones include:
+### Service mode
+
+1. In UiPath Automation Cloud go to **Admin → External Applications → Add Application**.
+2. Choose **Confidential application**.
+3. Add the scopes your MCP needs (see list below).
+4. Copy the **Client ID** and **Client Secret**.
+5. Run `npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>`.
+
+Typical scopes for service mode:
 
 - `OR.Folders`
 - `OR.Execution`
@@ -144,27 +215,31 @@ Typical scopes depend on what you want the MCP to do, but common ones include:
 
 Scopes alone are not enough. Folder access still matters.
 
-## CLI commands
-
-```bash
-npx uipath-orchestrator-mcp init
-npx uipath-orchestrator-mcp doctor
-npx uipath-orchestrator-mcp login
-npx uipath-orchestrator-mcp whoami
-npx uipath-orchestrator-mcp serve
-npx uipath-orchestrator-mcp logout
-```
-
 ## MCP client example
 
-Example Claude Desktop configuration:
+Example Claude Desktop configuration using service mode:
 
 ```json
 {
   "mcpServers": {
     "uipath-orchestrator": {
-      "command": "node",
-      "args": ["C:/path/to/uipath-orchestrator-mcp/dist/src/index.js", "serve"],
+      "command": "npx",
+      "args": ["uipath-orchestrator-mcp", "serve"]
+    }
+  }
+}
+```
+
+After running `login`, no env vars are needed — the saved config is picked up automatically.
+
+For explicit env var configuration (service mode):
+
+```json
+{
+  "mcpServers": {
+    "uipath-orchestrator": {
+      "command": "npx",
+      "args": ["uipath-orchestrator-mcp", "serve"],
       "env": {
         "UIPATH_BASE_URL": "https://cloud.uipath.com/your-org/DefaultTenant/orchestrator_",
         "UIPATH_ACCOUNT_LOGICAL_NAME": "your-org",
@@ -234,6 +309,7 @@ For local host file operations, this package now expects confirmation and enforc
 ## Security notes
 
 - keep `.env`, local config, and auth/session storage out of git
+- client secrets are stored encrypted on disk — never in plain text
 - use `doctor` to validate setup before connecting an MCP client
 - prefer least-privilege scopes and folder access where possible
 

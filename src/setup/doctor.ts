@@ -1,4 +1,4 @@
-export type DoctorMode = 'service' | 'interactive';
+export type DoctorMode = 'service' | 'interactive' | 'uip';
 
 export type FolderSummary = {
   id: number;
