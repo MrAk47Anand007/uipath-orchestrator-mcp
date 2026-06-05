@@ -31,6 +31,15 @@ describe('doctor env validation', () => {
     expect(result.ok).toBe(false);
     expect(result.missing).toContain('UIPATH_CLIENT_SECRET');
   });
+
+  it('accepts uip session mode without requiring explicit env values', () => {
+    const result = validateDoctorEnv({
+      UIPATH_AUTH_MODE: 'uip',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.missing).toEqual([]);
+  });
 });
 
 describe('doctor folder helpers', () => {

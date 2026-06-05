@@ -59,6 +59,23 @@ function formatCommand(command: string) {
   return `npx uipath-orchestrator-mcp ${command}`;
 }
 
+function resolveSecretValue(rawValue: string) {
+  if (!rawValue.startsWith('env.')) {
+    return rawValue;
+  }
+
+  const envKey = rawValue.slice(4);
+  const resolved = process.env[envKey];
+
+  if (!resolved) {
+    throw new Error(
+      `The secret reference "${rawValue}" could not be resolved because ${envKey} is not set.`,
+    );
+  }
+
+  return resolved;
+}
+
 function mergeConfigSources(
   persisted: Record<string, string>,
   envFile: Record<string, string>,
@@ -507,10 +524,19 @@ export async function runLogoutCommand(
 }
 
 export async function runWhoAmICommand(config: AppConfig) {
-  const session = await loadInteractiveSession(config.auth.storagePath);
-
   console.log(`Auth mode: ${config.auth.mode}`);
   console.log(`Tenant: ${config.accountLogicalName}/${config.tenantLogicalName}`);
+  if (config.auth.mode === 'uip') {
+    console.log(`UiPath CLI session: ${config.auth.uip?.authPath ?? '(not configured)'}`);
+    return;
+  }
+
+  if (config.auth.mode === 'service') {
+    console.log('Service auth: configured');
+    return;
+  }
+
+  const session = await loadInteractiveSession(config.auth.storagePath);
   console.log(`Session storage: ${config.auth.storagePath}`);
 
   if (!session) {
@@ -548,9 +574,9 @@ export async function runInitCommand(
     )) ?? '';
   const derived = deriveOrgTenantFromBaseUrl(baseUrl);
   const authMode = ((await prompt(
-    'Auth mode (interactive/service)',
-    current.UIPATH_AUTH_MODE ?? 'interactive',
-  )) || 'interactive') as AuthMode;
+    'Auth mode (uip/interactive/service)',
+    current.UIPATH_AUTH_MODE ?? 'uip',
+  )) || 'uip') as AuthMode;
   const accountLogicalName =
     (await prompt(
       'UiPath account logical name',
@@ -568,11 +594,13 @@ export async function runInitCommand(
           current.UIPATH_INTERACTIVE_OAUTH_SCOPES ??
             'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings offline_access',
         )
-      : await prompt(
+      : authMode === 'service'
+        ? await prompt(
           'Service scopes',
           current.UIPATH_OAUTH_SCOPES ??
             'OR.Folders OR.Execution OR.Jobs OR.Queues OR.Robots OR.Monitoring OR.Assets OR.Buckets OR.Users OR.Machines OR.Tasks OR.Webhooks OR.Audit OR.Settings',
-        );
+        )
+        : current.UIPATH_OAUTH_SCOPES;
   const interactiveClientId =
     authMode === 'interactive'
       ? await prompt(
@@ -665,9 +693,13 @@ export async function runInitCommand(
     console.log(
       `Next step: run \`${formatCommand('login')}\`, then run \`${formatCommand('doctor')}\`.`,
     );
+  } else if (authMode === 'uip') {
+    console.log(
+      'Next step: run `uip login` if needed, then run `npx uipath-orchestrator-mcp doctor`.',
+    );
   } else {
     console.log(
-      `Next step: run \`${formatCommand('doctor')}\` to verify the service app and folder access.`,
+      `Next step: run \`${formatCommand('doctor')}\` to verify the service app and folder access. You can also pass \`--client-secret env.UIPATH_CLIENT_SECRET\` to keep the secret out of shell history.`,
     );
   }
 }
@@ -868,6 +900,7 @@ export async function runServiceLoginCommand(options: {
   tenant?: string;
   configPath?: string;
 }) {
+  const clientSecret = resolveSecretValue(options.clientSecret);
   // Load any already-persisted config so we can fall back for account/tenant
   const persistedConfig = await readPersistedConfig({
     ...process.env,
@@ -913,7 +946,7 @@ export async function runServiceLoginCommand(options: {
   const getToken = createTokenProvider({
     tokenUrl,
     clientId: options.clientId,
-    clientSecret: options.clientSecret,
+    clientSecret,
     oauthScopes,
   });
 
@@ -947,7 +980,7 @@ export async function runServiceLoginCommand(options: {
     UIPATH_CONFIG_PATH: options.configPath,
   });
 
-  await writePersistedServiceSecret(secretPath, options.clientSecret, createSecureStorage());
+  await writePersistedServiceSecret(secretPath, clientSecret, createSecureStorage());
 
   console.log(`✓ Authenticated successfully.`);
   console.log(`  Organization : ${accountLogicalName}`);

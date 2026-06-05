@@ -22,16 +22,19 @@ export type DoctorReport = {
 };
 
 export function validateDoctorEnv(source: Record<string, string | undefined>) {
-  const missing = ['UIPATH_BASE_URL', 'UIPATH_ACCOUNT_LOGICAL_NAME', 'UIPATH_TENANT_LOGICAL_NAME'].filter(
-    (key) => !source[key],
-  );
   const mode = (source.UIPATH_AUTH_MODE ?? 'service') as DoctorMode;
+  const missing =
+    mode === 'uip'
+      ? []
+      : ['UIPATH_BASE_URL', 'UIPATH_ACCOUNT_LOGICAL_NAME', 'UIPATH_TENANT_LOGICAL_NAME'].filter(
+          (key) => !source[key],
+        );
 
   if (mode === 'interactive') {
     if (!source.UIPATH_INTERACTIVE_CLIENT_ID) {
       missing.push('UIPATH_INTERACTIVE_CLIENT_ID');
     }
-  } else {
+  } else if (mode === 'service') {
     if (!source.UIPATH_CLIENT_ID) {
       missing.push('UIPATH_CLIENT_ID');
     }
@@ -108,6 +111,10 @@ export function buildDoctorAdvice(input: {
     if (input.authMode === 'interactive') {
       advice.push(
         'Run `npx uipath-orchestrator-mcp login` to create or refresh your interactive UiPath session.',
+      );
+    } else if (input.authMode === 'uip') {
+      advice.push(
+        'Run `uip login` first, or switch to `npx uipath-orchestrator-mcp login` for a standalone saved session.',
       );
     } else {
       advice.push('Check the service app id, secret, scopes, and folder access in UiPath.');

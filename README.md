@@ -21,7 +21,8 @@ Use it when you want an MCP client to call UiPath Orchestrator directly through 
 This package has been exercised against a real UiPath Cloud tenant.
 
 - package-first CLI onboarding is implemented: `init`, `doctor`, `login`, `whoami`, `serve`, `logout`
-- three auth modes are supported: built-in browser login, service account, and interactive PKCE
+- three persisted auth modes are supported: `uip` session reuse, service account, and interactive PKCE
+- the default `login` command also supports a zero-config browser flow that uses the same public client as the current UiPath CLI
 - the package is published as `uipath-orchestrator-mcp`
 - core runtime, resource, scheduling, deployment, and admin surfaces are implemented
 
@@ -60,6 +61,23 @@ npx uipath-orchestrator-mcp serve
 - Org, tenant, and base URL are discovered automatically from the token. Nothing to configure beforehand.
 - `doctor` verifies auth and folder access.
 - `serve` starts the MCP server.
+
+### Option 1b — Reuse an existing `uip login` session
+
+If you already use the official UiPath CLI locally, this package can reuse that saved session.
+
+```bash
+uip login
+set UIPATH_AUTH_MODE=uip
+npx uipath-orchestrator-mcp doctor
+npx uipath-orchestrator-mcp serve
+```
+
+On PowerShell, you can also set it for the current shell only:
+
+```powershell
+$env:UIPATH_AUTH_MODE = "uip"
+```
 
 ### Option 2 — Headless service account login (CI/CD or unattended)
 
@@ -116,6 +134,17 @@ Logout clears the session and resets the saved config:
 npx uipath-orchestrator-mcp logout
 ```
 
+This path is convenient, but it depends on the current behavior of UiPath's public CLI client. If you want the most explicit and durable setup, use service mode or your own interactive app.
+
+### `uip` session mode
+
+Use this when you already have a local `uip login` session and want the MCP server to reuse it instead of storing a separate browser-login session.
+
+- `UIPATH_AUTH_MODE=uip`
+- reads the session from `~/.uipath/.auth`
+- refreshes the token through the same client used by the official UiPath CLI
+- best suited for local developer machines, not shared servers
+
 ### Service mode (headless, no browser)
 
 For shared agents, CI/CD pipelines, or unattended server use.
@@ -125,6 +154,13 @@ For shared agents, CI/CD pipelines, or unattended server use.
 
 ```bash
 npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>
+```
+
+Safer variant:
+
+```bash
+set UIPATH_CLIENT_SECRET=your-client-secret
+npx uipath-orchestrator-mcp login --client-id <id> --client-secret env.UIPATH_CLIENT_SECRET
 ```
 
 Credentials are encrypted and saved to disk. The MCP server uses them automatically on `serve`.
@@ -156,7 +192,7 @@ Required values:
 
 ```
 npx uipath-orchestrator-mcp login                                      # browser login, zero config
-npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>   # headless service login
+npx uipath-orchestrator-mcp login --client-id <id> --client-secret env.UIPATH_CLIENT_SECRET   # headless service login
 npx uipath-orchestrator-mcp logout                                     # clear session and config
 npx uipath-orchestrator-mcp doctor                                     # verify auth and folder access
 npx uipath-orchestrator-mcp whoami                                     # show current session info
@@ -194,7 +230,7 @@ Nothing to set up in UiPath. The built-in client and scopes are pre-configured.
 2. Choose **Confidential application**.
 3. Add the scopes your MCP needs (see list below).
 4. Copy the **Client ID** and **Client Secret**.
-5. Run `npx uipath-orchestrator-mcp login --client-id <id> --client-secret <secret>`.
+5. Run `npx uipath-orchestrator-mcp login --client-id <id> --client-secret env.UIPATH_CLIENT_SECRET`.
 
 Typical scopes for service mode:
 
@@ -310,6 +346,7 @@ For local host file operations, this package now expects confirmation and enforc
 
 - keep `.env`, local config, and auth/session storage out of git
 - client secrets are stored encrypted on disk — never in plain text
+- prefer `--client-secret env.UIPATH_CLIENT_SECRET` over putting the secret directly in shell history
 - use `doctor` to validate setup before connecting an MCP client
 - prefer least-privilege scopes and folder access where possible
 

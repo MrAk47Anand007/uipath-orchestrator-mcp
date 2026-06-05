@@ -2,7 +2,12 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getBrowserOpenCommand, runInitCommand } from '../src/cli.js';
+import nock from 'nock';
+import {
+  getBrowserOpenCommand,
+  runInitCommand,
+  runServiceLoginCommand,
+} from '../src/cli.js';
 
 describe('getBrowserOpenCommand', () => {
   it('uses the Windows URL handler so login opens in the default browser', () => {
@@ -64,5 +69,35 @@ describe('getBrowserOpenCommand', () => {
     const saved = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, string>;
     expect(saved.UIPATH_CLIENT_ID).toBe('service-client-id');
     expect(saved.UIPATH_CLIENT_SECRET).toBeUndefined();
+  });
+
+  it('resolves service secrets from env.NAME references during login', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uipath-mcp-cli-'));
+    const configPath = join(dir, 'config.json');
+    process.env.UIPATH_TEST_SERVICE_SECRET = 'resolved-secret';
+
+    try {
+      nock('https://cloud.uipath.com')
+        .post('/acme/identity_/connect/token')
+        .reply(200, {
+          access_token: 'token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+
+      await runServiceLoginCommand({
+        clientId: 'service-client-id',
+        clientSecret: 'env.UIPATH_TEST_SERVICE_SECRET',
+        account: 'acme',
+        tenant: 'DefaultTenant',
+        configPath,
+      });
+
+      const saved = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, string>;
+      expect(saved.UIPATH_CLIENT_ID).toBe('service-client-id');
+      expect(saved.UIPATH_CLIENT_SECRET).toBeUndefined();
+    } finally {
+      delete process.env.UIPATH_TEST_SERVICE_SECRET;
+    }
   });
 });
